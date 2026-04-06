@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Downloaded native libraries (run `make pdfium` to populate)
+lib/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

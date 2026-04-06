@@ -7,9 +7,37 @@ EXECUTABLE := collate
 all: fmt lint test build
 
 .PHONY: dev
-dev: ## Run the app in development mode
+dev: ## Run the app in development mode (requires lib/libpdfium — run `make pdfium` first)
 	@$(MAKE) --no-print-directory log-$@
-	cargo tauri dev
+	DYLD_LIBRARY_PATH=$(PWD)/lib:$$DYLD_LIBRARY_PATH cargo tauri dev
+
+# Download the pdfium shared library for the current platform into lib/.
+# Source: https://github.com/bblanchon/pdfium-binaries
+# Re-run to upgrade. Skips download if the library is already present.
+.PHONY: pdfium
+pdfium: ## Download pdfium binary for the current platform into lib/
+	@$(MAKE) --no-print-directory log-$@
+	@set -e; \
+	ARCH=$$(uname -m); OS=$$(uname -s); \
+	if [ "$$OS" = "Darwin" ] && [ "$$ARCH" = "arm64" ]; then PLATFORM=mac-arm64; \
+	elif [ "$$OS" = "Darwin" ]; then PLATFORM=mac-x64; \
+	elif [ "$$OS" = "Linux" ] && [ "$$ARCH" = "aarch64" ]; then PLATFORM=linux-arm64; \
+	elif [ "$$OS" = "Linux" ]; then PLATFORM=linux-x64; \
+	else echo "Unsupported platform: $$OS/$$ARCH"; exit 1; fi; \
+	LIB_NAME=libpdfium.dylib; \
+	if [ "$$OS" = "Linux" ]; then LIB_NAME=libpdfium.so; fi; \
+	mkdir -p lib; \
+	if [ -f "lib/$$LIB_NAME" ]; then \
+		echo "pdfium already present at lib/$$LIB_NAME — delete it first to re-download"; \
+		exit 0; \
+	fi; \
+	echo "Downloading pdfium for $$PLATFORM..."; \
+	TMP=$$(mktemp -d); \
+	curl -fsSL "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-$$PLATFORM.tgz" \
+		| tar -xz -C "$$TMP"; \
+	cp "$$TMP/lib/$$LIB_NAME" lib/; \
+	rm -rf "$$TMP"; \
+	echo "Installed lib/$$LIB_NAME"
 
 .PHONY: build
 build: ## Build the application
