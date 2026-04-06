@@ -9,7 +9,7 @@ all: fmt lint test build
 .PHONY: dev
 dev: ## Run the app in development mode (requires lib/libpdfium — run `make pdfium` first)
 	@$(MAKE) --no-print-directory log-$@
-	DYLD_LIBRARY_PATH=$(PWD)/lib:$$DYLD_LIBRARY_PATH cargo tauri dev
+	DYLD_LIBRARY_PATH=$(PWD)/lib:$$DYLD_LIBRARY_PATH LD_LIBRARY_PATH=$(PWD)/lib:$$LD_LIBRARY_PATH cargo tauri dev
 
 # Download the pdfium shared library for the current platform into lib/.
 # Source: https://github.com/bblanchon/pdfium-binaries
