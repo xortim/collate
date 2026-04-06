@@ -86,6 +86,9 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
     // Rust note: the braces create a scope so the MutexGuard (`pdfium`) drops
     // at `}`, releasing the lock before we do anything else — same idea as
     // Go's defer mu.Unlock() but scope-driven rather than explicit.
+    // Rust note: the closure returns Result<PageSize, String> so we can
+    // propagate errors with `?`. collect::<Result<Vec<_>, _>>() short-circuits
+    // on the first Err — analogous to returning early from a Go loop on error.
     let page_sizes: Vec<PageSize> = {
         let pdfium = state.pdfium.lock().unwrap();
         let doc = pdfium
@@ -93,13 +96,16 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
             .map_err(|e| format!("pdfium failed to read PDF: {e:?}"))?;
         (0..page_count as i32)
             .map(|i| {
-                let page = doc.pages().get(i).unwrap();
-                PageSize {
+                let page = doc
+                    .pages()
+                    .get(i)
+                    .map_err(|e| format!("Failed to get page {i}: {e:?}"))?;
+                Ok(PageSize {
                     width_pts: page.width().value as f64,
                     height_pts: page.height().value as f64,
-                }
+                })
             })
-            .collect()
+            .collect::<Result<Vec<_>, String>>()?
     };
 
     let filename = Path::new(&path)
