@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use pdfium_render::prelude::*;
@@ -12,13 +12,25 @@ use tauri::State;
 // App state
 // ---------------------------------------------------------------------------
 
+// page_count and filename will be used in future IPC commands (close_document,
+// workspace manifest). Suppress the dead_code lint until then.
+#[allow(dead_code)]
 struct DocumentEntry {
-    path: String,
+    /// Raw PDF bytes kept in memory so pdfium never re-reads from disk.
+    /// Arc lets us clone the pointer (cheap) without copying the bytes.
+    pdf_bytes: Arc<Vec<u8>>,
     page_count: usize,
     filename: String,
 }
 
 struct AppState {
+    /// Pdfium binding, initialised once at startup.
+    ///
+    /// Rust note: Mutex<T> is Send+Sync when T: Send. The `thread_safe`
+    /// feature on pdfium-render makes Pdfium use Arc internally instead of
+    /// Rc, so Pdfium becomes Send — allowing it to live behind a Mutex in a
+    /// shared state struct that Tauri hands to multiple threads.
+    pdfium: Mutex<Pdfium>,
     documents: Mutex<HashMap<u32, DocumentEntry>>,
     next_id: AtomicU32,
 }
@@ -27,32 +39,74 @@ struct AppState {
 // IPC return types
 // ---------------------------------------------------------------------------
 
-/// Returned by `open_document`. Gives the frontend enough to render the UI.
+/// Physical page dimensions in PDF points (1 pt = 1/72 inch).
+/// The frontend uses these to pre-size virtual list rows before the image
+/// arrives, preventing layout shifts during scroll.
+#[derive(Serialize)]
+struct PageSize {
+    width_pts: f64,
+    height_pts: f64,
+}
+
+/// Returned by `open_document`.
 #[derive(Serialize)]
 struct DocumentManifest {
     doc_id: u32,
     page_count: usize,
     filename: String,
+    /// One entry per page, in order.
+    page_sizes: Vec<PageSize>,
 }
 
 // ---------------------------------------------------------------------------
 // IPC commands
 // ---------------------------------------------------------------------------
 
-/// Open a PDF. Validates the file with lopdf, stores it in app state, and
-/// returns a manifest so the frontend knows how many pages exist.
+/// Open a PDF. Reads bytes into memory, validates with lopdf, extracts page
+/// sizes with pdfium, stores everything in AppState, returns a manifest.
 ///
 /// Rust note: `State<AppState>` is dependency injection — Tauri sees the type
 /// and hands us the value we registered with `.manage()` in `run()`. The
 /// `Mutex` lets us safely mutate the HashMap from any thread. We `lock()`
 /// to get a `MutexGuard` (Go analogy: a sync.Mutex that returns a typed
-/// guard), then it unlocks automatically when the guard drops.
+/// guard), then it unlocks automatically when the guard drops at end of scope.
 #[tauri::command]
 fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifest, String> {
-    let doc = lopdf::Document::load(&path)
-        .map_err(|e| format!("Failed to open PDF: {e}"))?;
+    // Read the file once; everything downstream uses these bytes.
+    let pdf_bytes =
+        std::fs::read(&path).map_err(|e| format!("Failed to read file: {e}"))?;
 
-    let page_count = doc.get_pages().len();
+    // Validate the PDF structure with lopdf (our future editing library).
+    let lopdf_doc = lopdf::Document::load_mem(&pdf_bytes)
+        .map_err(|e| format!("Invalid or corrupt PDF: {e}"))?;
+    let page_count = lopdf_doc.get_pages().len();
+
+    // Extract per-page dimensions using the cached pdfium binding.
+    //
+    // Rust note: the braces create a scope so the MutexGuard (`pdfium`) drops
+    // at `}`, releasing the lock before we do anything else — same idea as
+    // Go's defer mu.Unlock() but scope-driven rather than explicit.
+    // Rust note: the closure returns Result<PageSize, String> so we can
+    // propagate errors with `?`. collect::<Result<Vec<_>, _>>() short-circuits
+    // on the first Err — analogous to returning early from a Go loop on error.
+    let page_sizes: Vec<PageSize> = {
+        let pdfium = state.pdfium.lock().unwrap();
+        let doc = pdfium
+            .load_pdf_from_byte_slice(&pdf_bytes, None)
+            .map_err(|e| format!("pdfium failed to read PDF: {e:?}"))?;
+        (0..page_count as i32)
+            .map(|i| {
+                let page = doc
+                    .pages()
+                    .get(i)
+                    .map_err(|e| format!("Failed to get page {i}: {e:?}"))?;
+                Ok(PageSize {
+                    width_pts: page.width().value as f64,
+                    height_pts: page.height().value as f64,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?
+    };
 
     let filename = Path::new(&path)
         .file_name()
@@ -67,7 +121,7 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
     state.documents.lock().unwrap().insert(
         doc_id,
         DocumentEntry {
-            path,
+            pdf_bytes: Arc::new(pdf_bytes),
             page_count,
             filename: filename.clone(),
         },
@@ -77,22 +131,20 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
         doc_id,
         page_count,
         filename,
+        page_sizes,
     })
 }
 
-/// Render one page with pdfium-render and return it as a base64-encoded PNG.
+/// Render one page and return it as a base64-encoded PNG string.
 ///
-/// The frontend receives a plain string it can use directly as the `src` of
-/// an <img> tag after prefixing with `data:image/png;base64,`.
+/// The pdfium binding is already initialised in AppState (no library load),
+/// and the PDF bytes are already in memory (no disk I/O). This call only
+/// parses and renders.
 ///
-/// Rust note: we lock the Mutex only long enough to clone the path string,
-/// then drop the guard before the pdfium calls. This avoids holding a lock
-/// across slow I/O — a common Rust pattern for keeping critical sections short.
-///
-/// pdfium note: pdfium is a C library that needs the shared library
-/// (libpdfium.dylib / pdfium.dll) present at runtime.
-/// On macOS: download from https://github.com/bblanchon/pdfium-binaries/releases
-/// and place libpdfium.dylib in /usr/local/lib (or anywhere on DYLD_LIBRARY_PATH).
+/// Rust note: we acquire the documents lock only long enough to clone the Arc
+/// (a pointer increment, not a byte copy), release it, then acquire the pdfium
+/// lock for rendering. Keeping critical sections short and non-overlapping
+/// avoids deadlocks and reduces contention.
 #[tauri::command]
 fn get_page_image(
     doc_id: u32,
@@ -100,27 +152,19 @@ fn get_page_image(
     width: u32,
     state: State<AppState>,
 ) -> Result<String, String> {
-    // Pull the path out while holding the lock, then release it immediately.
-    let path = {
+    // Clone the Arc — O(1), just bumps a reference count.
+    let pdf_bytes = {
         let docs = state.documents.lock().unwrap();
         docs.get(&doc_id)
             .ok_or_else(|| format!("Document {doc_id} not found"))?
-            .path
+            .pdf_bytes
             .clone()
     };
 
-    // Bind to pdfium. bind_to_system_library() searches the standard library
-    // paths for the platform (DYLD_LIBRARY_PATH on macOS, PATH on Windows).
-    // Rust note: the `?` operator is like Go's `if err != nil { return err }`,
-    // but it also calls `.into()` on the error so types can be converted —
-    // here we chain .map_err() to convert the pdfium error to a String first.
-    let pdfium = Pdfium::new(
-        Pdfium::bind_to_system_library()
-            .map_err(|e| format!("pdfium library not found: {e:?}. See get_page_image docs."))?,
-    );
+    let pdfium = state.pdfium.lock().unwrap();
 
     let doc = pdfium
-        .load_pdf_from_file(&path, None)
+        .load_pdf_from_byte_slice(&pdf_bytes, None)
         .map_err(|e| format!("pdfium failed to load PDF: {e:?}"))?;
 
     // PdfPageIndex is i32 in pdfium-render 0.9.0.
@@ -135,9 +179,8 @@ fn get_page_image(
         .render_with_config(&render_config)
         .map_err(|e| format!("Failed to render page: {e:?}"))?;
 
-    // as_image() returns Result<DynamicImage, PdfiumError> in 0.9.0 — the `?`
-    // extracts the value or propagates the error (like Go's err check but
-    // inline). DynamicImage is from the `image` crate.
+    // as_image() returns Result<DynamicImage, PdfiumError>. DynamicImage is
+    // from the `image` crate — a heap-allocated decoded bitmap.
     let img = rendered
         .as_image()
         .map_err(|e| format!("Failed to convert to image: {e:?}"))?;
@@ -158,8 +201,16 @@ fn get_page_image(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Bind to pdfium once for the lifetime of the process. Panicking here
+    // gives a clear startup error if the library is missing (run `make pdfium`).
+    let pdfium = Pdfium::new(
+        Pdfium::bind_to_system_library()
+            .expect("pdfium shared library not found — run `make pdfium` first"),
+    );
+
     tauri::Builder::default()
         .manage(AppState {
+            pdfium: Mutex::new(pdfium),
             documents: Mutex::new(HashMap::new()),
             next_id: AtomicU32::new(0),
         })
