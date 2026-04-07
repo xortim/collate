@@ -83,6 +83,11 @@ test-frontend: ## Execute frontend tests only
 	@$(MAKE) --no-print-directory log-$@
 	pnpm test
 
+.PHONY: bench
+bench: ## Run rendering benchmarks (requires lib/libpdfium — run `make pdfium` first)
+	@$(MAKE) --no-print-directory log-$@
+	DYLD_LIBRARY_PATH=$(PWD)/lib:$$DYLD_LIBRARY_PATH LD_LIBRARY_PATH=$(PWD)/lib:$$LD_LIBRARY_PATH cargo bench --manifest-path src-tauri/Cargo.toml
+
 .PHONY: clean
 clean: ## Clean build artifacts
 	@$(MAKE) --no-print-directory log-$@
