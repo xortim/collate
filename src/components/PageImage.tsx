@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Props {
   docId: number;
@@ -46,7 +47,7 @@ export function PageImage({ docId, pageIndex, width, widthPts, heightPts }: Prop
   if (error) {
     return (
       <div
-        className="w-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600 text-sm"
+        className="w-full border border-destructive/30 bg-destructive/5 flex items-center justify-center text-destructive text-sm rounded-md"
         style={{ aspectRatio }}
       >
         Page {pageIndex + 1}: {error}
@@ -56,8 +57,8 @@ export function PageImage({ docId, pageIndex, width, widthPts, heightPts }: Prop
 
   if (!src) {
     return (
-      <div
-        className="w-full bg-gray-100 animate-pulse"
+      <Skeleton
+        className="w-full rounded-md"
         style={{ aspectRatio }}
         aria-label={`Loading page ${pageIndex + 1}`}
       />
@@ -68,7 +69,7 @@ export function PageImage({ docId, pageIndex, width, widthPts, heightPts }: Prop
     <img
       src={src}
       alt={`Page ${pageIndex + 1}`}
-      className="w-full shadow-sm block"
+      className="w-full shadow-sm block rounded-md"
       style={{ aspectRatio }}
     />
   );
