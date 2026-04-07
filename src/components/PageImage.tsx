@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface Props {
   docId: number;
   pageIndex: number;
-  /** Render width in CSS pixels — drives pdfium resolution. */
+  /** Container width in CSS pixels — multiplied by devicePixelRatio for pdfium. */
   width: number;
   /** Page aspect ratio for the loading placeholder. */
   widthPts: number;
@@ -29,9 +29,11 @@ export function PageImage({ docId, pageIndex, width, widthPts, heightPts }: Prop
     setSrc(null);
     setError(null);
 
-    invoke<string>("get_page_image", { docId, pageIndex, width })
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    const physicalWidth = Math.round(width * dpr);
+    invoke<string>("get_page_image", { docId, pageIndex, width: physicalWidth })
       .then((data) => {
-        if (!cancelled) setSrc(`data:image/png;base64,${data}`);
+        if (!cancelled) setSrc(`data:image/jpeg;base64,${data}`);
       })
       .catch((e) => {
         if (!cancelled) setError(String(e));

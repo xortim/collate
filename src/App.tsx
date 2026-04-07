@@ -32,6 +32,10 @@ function App() {
 
     setLoading(true);
     setError(null);
+
+    if (manifest) {
+      await invoke("close_document", { docId: manifest.doc_id });
+    }
     setManifest(null);
 
     try {

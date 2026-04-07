@@ -12,26 +12,33 @@ use tauri::State;
 // App state
 // ---------------------------------------------------------------------------
 
-// page_count and filename will be used in future IPC commands (close_document,
-// workspace manifest). Suppress the dead_code lint until then.
-#[allow(dead_code)]
+// Pdfium is a zero-size type — it holds no data. The actual library bindings
+// live in a global static OnceCell inside pdfium-render, initialised once at
+// startup via Pdfium::new(). The 'a lifetime on PdfDocument<'a> is tied to
+// those global bindings (not to any Pdfium instance field), so transmuting
+// PdfDocument<'_> to PdfDocument<'static> is sound: the bindings ARE 'static.
+//
+// We verify this in the SAFETY comment on the transmute below.
+
 struct DocumentEntry {
-    /// Raw PDF bytes kept in memory so pdfium never re-reads from disk.
-    /// Arc lets us clone the pointer (cheap) without copying the bytes.
-    pdf_bytes: Arc<Vec<u8>>,
+    // Per-document mutex serialises same-document renders — pdfium's C library
+    // is not safe for concurrent operations on the same FPDF_DOCUMENT.
+    //
+    // Rust note: Mutex<T> gives us exclusive access across threads. Each
+    // get_page_image call locks this for the duration of the render, then
+    // releases it — analogous to sync.Mutex in Go but RAII-scoped.
+    doc: Mutex<PdfDocument<'static>>,
     page_count: usize,
     filename: String,
+    // Keep bytes alive — pdfium's FPDF_LoadMemDocument holds a pointer into
+    // this buffer for the lifetime of the document.
+    _bytes: Arc<Vec<u8>>,
 }
 
 struct AppState {
-    /// Pdfium binding, initialised once at startup.
-    ///
-    /// Rust note: Mutex<T> is Send+Sync when T: Send. The `thread_safe`
-    /// feature on pdfium-render makes Pdfium use Arc internally instead of
-    /// Rc, so Pdfium becomes Send — allowing it to live behind a Mutex in a
-    /// shared state struct that Tauri hands to multiple threads.
-    pdfium: Mutex<Pdfium>,
-    documents: Mutex<HashMap<u32, DocumentEntry>>,
+    // Arc<DocumentEntry> lets us clone a cheap handle before spawn_blocking
+    // without holding State<'_> (which has a lifetime) across an await point.
+    documents: Mutex<HashMap<u32, Arc<DocumentEntry>>>,
     next_id: AtomicU32,
 }
 
@@ -40,8 +47,6 @@ struct AppState {
 // ---------------------------------------------------------------------------
 
 /// Physical page dimensions in PDF points (1 pt = 1/72 inch).
-/// The frontend uses these to pre-size virtual list rows before the image
-/// arrives, preventing layout shifts during scroll.
 #[derive(Serialize)]
 struct PageSize {
     width_pts: f64,
@@ -54,7 +59,6 @@ struct DocumentManifest {
     doc_id: u32,
     page_count: usize,
     filename: String,
-    /// One entry per page, in order.
     page_sizes: Vec<PageSize>,
 }
 
@@ -62,51 +66,36 @@ struct DocumentManifest {
 // IPC commands
 // ---------------------------------------------------------------------------
 
-/// Open a PDF. Reads bytes into memory, validates with lopdf, extracts page
-/// sizes with pdfium, stores everything in AppState, returns a manifest.
+/// Open a PDF, validate it, cache the parsed pdfium document, return a manifest.
 ///
-/// Rust note: `State<AppState>` is dependency injection — Tauri sees the type
-/// and hands us the value we registered with `.manage()` in `run()`. The
-/// `Mutex` lets us safely mutate the HashMap from any thread. We `lock()`
-/// to get a `MutexGuard` (Go analogy: a sync.Mutex that returns a typed
-/// guard), then it unlocks automatically when the guard drops at end of scope.
+/// The parse cost is paid once here. Subsequent get_page_image calls reuse
+/// the cached PdfDocument and go straight to rendering.
 #[tauri::command]
 fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifest, String> {
-    // Read the file once; everything downstream uses these bytes.
-    let pdf_bytes =
-        std::fs::read(&path).map_err(|e| format!("Failed to read file: {e}"))?;
+    let pdf_bytes = Arc::new(
+        std::fs::read(&path).map_err(|e| format!("Failed to read file: {e}"))?,
+    );
 
-    // Validate the PDF structure with lopdf (our future editing library).
-    let lopdf_doc = lopdf::Document::load_mem(&pdf_bytes)
-        .map_err(|e| format!("Invalid or corrupt PDF: {e}"))?;
-    let page_count = lopdf_doc.get_pages().len();
+    // Pdfium is a ZST — constructing it is free, it's just a token that lets
+    // us call methods backed by the global static bindings.
+    let doc = Pdfium
+        .load_pdf_from_byte_slice(&pdf_bytes, None)
+        .map_err(|e| format!("pdfium failed to read PDF: {e:?}"))?;
 
-    // Extract per-page dimensions using the cached pdfium binding.
-    //
-    // Rust note: the braces create a scope so the MutexGuard (`pdfium`) drops
-    // at `}`, releasing the lock before we do anything else — same idea as
-    // Go's defer mu.Unlock() but scope-driven rather than explicit.
-    // Rust note: the closure returns Result<PageSize, String> so we can
-    // propagate errors with `?`. collect::<Result<Vec<_>, _>>() short-circuits
-    // on the first Err — analogous to returning early from a Go loop on error.
-    let page_sizes: Vec<PageSize> = {
-        let pdfium = state.pdfium.lock().unwrap();
-        let doc = pdfium
-            .load_pdf_from_byte_slice(&pdf_bytes, None)
-            .map_err(|e| format!("pdfium failed to read PDF: {e:?}"))?;
-        (0..page_count as i32)
-            .map(|i| {
-                let page = doc
-                    .pages()
-                    .get(i)
-                    .map_err(|e| format!("Failed to get page {i}: {e:?}"))?;
-                Ok(PageSize {
-                    width_pts: page.width().value as f64,
-                    height_pts: page.height().value as f64,
-                })
+    let page_count = doc.pages().len() as usize;
+
+    let page_sizes: Vec<PageSize> = (0..page_count as i32)
+        .map(|i| {
+            let page = doc
+                .pages()
+                .get(i)
+                .map_err(|e| format!("Failed to get page {i}: {e:?}"))?;
+            Ok(PageSize {
+                width_pts: page.width().value as f64,
+                height_pts: page.height().value as f64,
             })
-            .collect::<Result<Vec<_>, String>>()?
-    };
+        })
+        .collect::<Result<Vec<_>, String>>()?;
 
     let filename = Path::new(&path)
         .file_name()
@@ -114,17 +103,33 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
         .unwrap_or("unknown.pdf")
         .to_string();
 
-    // AtomicU32::fetch_add is like sync/atomic.AddUint32 in Go — returns the
-    // old value and increments atomically, so no Mutex needed for the counter.
+    // SAFETY: pdfium-render stores its bindings in a global static OnceCell:
+    //
+    //   static BINDINGS: OnceCell<Box<dyn PdfiumLibraryBindings>> = OnceCell::new();
+    //   pub struct Pdfium;  // zero-size type, no fields
+    //
+    // PdfDocument<'a> and its sub-collections (PdfPages, PdfBookmarks, …) contain
+    // only raw FPDF_DOCUMENT handles plus PhantomData<&'a FPDF_DOCUMENT>. There
+    // are no actual stored references to a Pdfium instance. The 'a lifetime exists
+    // solely to tie the document to the call-site borrow of Pdfium, but since
+    // Pdfium is a ZST and the bindings are 'static, the constraint is artificial.
+    // Transmuting to 'static reflects the true lifetime of the underlying data.
+    //
+    // Invariant we must uphold: never use PdfDocument after the process exits
+    // (trivially true) and never call it concurrently on the same document
+    // (enforced by Mutex<PdfDocument<'static>>).
+    let doc: PdfDocument<'static> = unsafe { std::mem::transmute(doc) };
+
     let doc_id = state.next_id.fetch_add(1, Ordering::Relaxed);
 
     state.documents.lock().unwrap().insert(
         doc_id,
-        DocumentEntry {
-            pdf_bytes: Arc::new(pdf_bytes),
+        Arc::new(DocumentEntry {
+            doc: Mutex::new(doc),
             page_count,
             filename: filename.clone(),
-        },
+            _bytes: pdf_bytes,
+        }),
     );
 
     Ok(DocumentManifest {
@@ -135,64 +140,76 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
     })
 }
 
-/// Render one page and return it as a base64-encoded PNG string.
+/// Render one page and return it as a base64-encoded JPEG string.
 ///
-/// The pdfium binding is already initialised in AppState (no library load),
-/// and the PDF bytes are already in memory (no disk I/O). This call only
-/// parses and renders.
+/// The PdfDocument is cached from open_document — no re-parsing. The render
+/// runs on a blocking thread so the async executor is never stalled.
 ///
-/// Rust note: we acquire the documents lock only long enough to clone the Arc
-/// (a pointer increment, not a byte copy), release it, then acquire the pdfium
-/// lock for rendering. Keeping critical sections short and non-overlapping
-/// avoids deadlocks and reduces contention.
+/// Rust note: we clone the Arc<DocumentEntry> before the await point so we
+/// don't hold State<'_> (a borrowed reference) across the suspension. The Arc
+/// clone is O(1) — just an atomic refcount increment.
 #[tauri::command]
-fn get_page_image(
+async fn get_page_image(
     doc_id: u32,
     page_index: u32,
     width: u32,
-    state: State<AppState>,
+    state: State<'_, AppState>,
 ) -> Result<String, String> {
-    // Clone the Arc — O(1), just bumps a reference count.
-    let pdf_bytes = {
+    let entry = {
         let docs = state.documents.lock().unwrap();
         docs.get(&doc_id)
             .ok_or_else(|| format!("Document {doc_id} not found"))?
-            .pdf_bytes
             .clone()
     };
 
-    let pdfium = state.pdfium.lock().unwrap();
+    tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let doc = entry.doc.lock().unwrap();
 
-    let doc = pdfium
-        .load_pdf_from_byte_slice(&pdf_bytes, None)
-        .map_err(|e| format!("pdfium failed to load PDF: {e:?}"))?;
+        let page = doc
+            .pages()
+            .get(page_index as i32)
+            .map_err(|e| format!("Failed to get page {page_index}: {e:?}"))?;
 
-    // PdfPageIndex is i32 in pdfium-render 0.9.0.
-    let page = doc
-        .pages()
-        .get(page_index as i32)
-        .map_err(|e| format!("Failed to get page {page_index}: {e:?}"))?;
+        // set_reverse_byte_order makes pdfium output RGBA directly so
+        // as_raw_bytes() needs no post-processing channel swap.
+        let render_config = PdfRenderConfig::new()
+            .set_target_width(width as i32)
+            .set_reverse_byte_order(true);
 
-    let render_config = PdfRenderConfig::new().set_target_width(width as i32);
+        let bitmap = page
+            .render_with_config(&render_config)
+            .map_err(|e| format!("Failed to render page: {e:?}"))?;
 
-    let rendered = page
-        .render_with_config(&render_config)
-        .map_err(|e| format!("Failed to render page: {e:?}"))?;
+        let raw = bitmap.as_raw_bytes();
+        let rgba = image::RgbaImage::from_raw(bitmap.width() as u32, bitmap.height() as u32, raw)
+            .ok_or_else(|| "Bitmap buffer too small".to_string())?;
 
-    // as_image() returns Result<DynamicImage, PdfiumError>. DynamicImage is
-    // from the `image` crate — a heap-allocated decoded bitmap.
-    let img = rendered
-        .as_image()
-        .map_err(|e| format!("Failed to convert to image: {e:?}"))?;
+        // Flatten RGBA → RGB. JPEG has no alpha channel; PDF page backgrounds
+        // are always white so transparent areas are already white in the bitmap.
+        let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
 
-    let mut png_bytes: Vec<u8> = Vec::new();
-    img.write_to(
-        &mut std::io::Cursor::new(&mut png_bytes),
-        image::ImageFormat::Png,
-    )
-    .map_err(|e| format!("Failed to encode PNG: {e}"))?;
+        // JPEG encodes in ~20ms vs ~300ms for PNG DEFLATE at this resolution.
+        // Quality 90 is visually lossless for PDF content at normal viewing scale.
+        let mut jpeg_bytes: Vec<u8> = Vec::with_capacity(200_000);
+        image::codecs::jpeg::JpegEncoder::new_with_quality(
+            &mut std::io::Cursor::new(&mut jpeg_bytes),
+            90,
+        )
+        .encode_image(&rgb)
+        .map_err(|e| format!("Failed to encode JPEG: {e}"))?;
 
-    Ok(BASE64.encode(&png_bytes))
+        Ok(BASE64.encode(&jpeg_bytes))
+    })
+    .await
+    .map_err(|e| format!("Render task panicked: {e}"))?
+}
+
+/// Release a document from memory. The PdfDocument drop impl calls
+/// FPDF_CloseDocument automatically.
+#[tauri::command]
+fn close_document(doc_id: u32, state: State<AppState>) -> Result<(), String> {
+    state.documents.lock().unwrap().remove(&doc_id);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -201,22 +218,26 @@ fn get_page_image(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Bind to pdfium once for the lifetime of the process. Panicking here
-    // gives a clear startup error if the library is missing (run `make pdfium`).
-    let pdfium = Pdfium::new(
+    // Initialise the pdfium library once for the process lifetime.
+    // This populates the global static OnceCell that all PdfDocument instances
+    // rely on. Failing here gives a clear message instead of a later panic.
+    Pdfium::new(
         Pdfium::bind_to_system_library()
             .expect("pdfium shared library not found — run `make pdfium` first"),
     );
 
     tauri::Builder::default()
         .manage(AppState {
-            pdfium: Mutex::new(pdfium),
             documents: Mutex::new(HashMap::new()),
             next_id: AtomicU32::new(0),
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![open_document, get_page_image])
+        .invoke_handler(tauri::generate_handler![
+            open_document,
+            get_page_image,
+            close_document,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
