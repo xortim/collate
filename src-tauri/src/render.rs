@@ -114,6 +114,13 @@ pub fn render_page_jpeg(
 /// This is the preferred output format for the collate:// protocol because
 /// <img src> loads bypass CORS entirely (unlike fetch()), and BMP is
 /// supported natively by every browser WebKit engine.
+///
+/// # Panics
+///
+/// Panics if `rgba.len() < width * height * 4`. Every pixel requires 4 bytes
+/// (R, G, B, A). The caller is responsible for ensuring the buffer matches
+/// the declared dimensions — this invariant is always satisfied when `rgba`
+/// comes from `rasterise_page`.
 pub fn encode_bmp(rgba: &[u8], width: u32, height: u32) -> Vec<u8> {
     // BMP rows must be padded to a 4-byte boundary.
     let row_stride = (width as usize * 3 + 3) & !3;
@@ -225,5 +232,12 @@ mod tests {
         assert_eq!(bmp[54], 0); // B
         assert_eq!(bmp[55], 0); // G
         assert_eq!(bmp[56], 255); // R
+    }
+
+    #[test]
+    #[should_panic]
+    fn encode_bmp_panics_on_undersized_buffer() {
+        // 3 bytes is too small for a 1×1 RGBA image (needs 4)
+        encode_bmp(&[0u8; 3], 1, 1);
     }
 }

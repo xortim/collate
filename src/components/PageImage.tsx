@@ -35,7 +35,10 @@ export function PageImage({ docId, pageIndex, width, widthPts, heightPts }: Prop
     setLoaded(false);
     setError(null);
 
-    const dpr = Math.min(window.devicePixelRatio, 2);
+    // Cap at 3x: covers Retina (2x) and high-density mobile/pro displays (3x)
+    // without unbounded render costs on future hardware. Beyond 3x the visual
+    // difference is imperceptible for PDF text at normal viewing distance.
+    const dpr = Math.min(window.devicePixelRatio, 3);
     const physicalWidth = Math.round(width * dpr);
     setSrc(`collate://localhost/${docId}/${pageIndex}/${physicalWidth}`);
 

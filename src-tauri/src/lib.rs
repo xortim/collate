@@ -3,13 +3,12 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use pdfium_render::prelude::*;
 use serde::Serialize;
 use tauri::{http, Manager, State};
 
 mod render;
-pub use render::{encode_bmp, encode_jpeg, rasterise_page, rgba_to_rgb, render_page_jpeg};
+pub use render::{encode_bmp, encode_jpeg, rasterise_page, rgba_to_rgb};
 
 // ---------------------------------------------------------------------------
 // App state
@@ -121,6 +120,9 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
     // Invariant we must uphold: never use PdfDocument after the process exits
     // (trivially true) and never call it concurrently on the same document
     // (enforced by Mutex<PdfDocument<'static>>).
+    //
+    // Verified against pdfium-render = 0.9.0 (pinned in Cargo.toml) — re-audit
+    // this transmute before bumping that version.
     let doc: PdfDocument<'static> = unsafe { std::mem::transmute(doc) };
 
     let doc_id = state.next_id.fetch_add(1, Ordering::Relaxed);
@@ -141,37 +143,6 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
         filename,
         page_sizes,
     })
-}
-
-/// Render one page and return it as a base64-encoded JPEG string.
-///
-/// The PdfDocument is cached from open_document — no re-parsing. The render
-/// runs on a blocking thread so the async executor is never stalled.
-///
-/// Rust note: we clone the Arc<DocumentEntry> before the await point so we
-/// don't hold State<'_> (a borrowed reference) across the suspension. The Arc
-/// clone is O(1) — just an atomic refcount increment.
-#[tauri::command]
-async fn get_page_image(
-    doc_id: u32,
-    page_index: u32,
-    width: u32,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
-    let entry = {
-        let docs = state.documents.lock().unwrap();
-        docs.get(&doc_id)
-            .ok_or_else(|| format!("Document {doc_id} not found"))?
-            .clone()
-    };
-
-    tokio::task::spawn_blocking(move || -> Result<String, String> {
-        let doc = entry.doc.lock().unwrap();
-        let jpeg_bytes = render_page_jpeg(&doc, page_index, width)?;
-        Ok(BASE64.encode(&jpeg_bytes))
-    })
-    .await
-    .map_err(|e| format!("Render task panicked: {e}"))?
 }
 
 /// Release a document from memory. The PdfDocument drop impl calls
@@ -244,6 +215,20 @@ pub fn run() {
                 }
             };
 
+            // Serialised by design: pdfium's C library is not thread-safe for
+            // concurrent operations on the same FPDF_DOCUMENT handle. The
+            // `thread_safe` feature on pdfium-render makes Pdfium itself
+            // Send+Sync (it swaps Rc for Arc internally), but that only covers
+            // the library handle — it does not make simultaneous renders on one
+            // document safe. Hence the Mutex here.
+            //
+            // At ~0.3 ms/render this is not a bottleneck today. If it ever
+            // becomes one, the fix is a per-document pool of PdfDocument
+            // instances (each calling load_pdf_from_byte_slice on the same
+            // Arc<Vec<u8>>). The bytes are already reference-counted and
+            // pdfium holds only a pointer into that buffer — so N pool members
+            // share one heap allocation with no extra copies. See the tracking
+            // issue for a spike plan.
             let doc = entry.doc.lock().unwrap();
             match rasterise_page(&doc, page_index, width) {
                 Ok((rgba, w, h)) => http::Response::builder()
@@ -261,7 +246,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             open_document,
-            get_page_image,
             close_document,
         ])
         .run(tauri::generate_context!())
