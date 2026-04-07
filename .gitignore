@@ -15,6 +15,9 @@ dist-ssr
 # Downloaded native libraries (run `make pdfium` to populate)
 lib/
 
+# Claude Code local settings (personal overrides, not for team)
+.claude/settings.local.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

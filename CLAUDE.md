@@ -32,6 +32,25 @@ Collate is a cross-platform PDF editing suite built with Tauri v2 (Rust backend)
 - No shelling out. All functionality via linked libraries.
 - Every mutation command returns the full WorkspaceManifest.
 
+## Test-Driven Development
+
+Write tests before or alongside code — never after. A feature isn't done until it has a test.
+
+**Rust (backend):**
+- Unit tests live in `#[cfg(test)]` modules at the bottom of the file they test.
+- Integration tests go in `src-tauri/tests/`.
+- Use `make test-rust` to run. All tests must pass before committing.
+- Rendering changes must also pass `make bench` — see baselines below.
+
+**TypeScript (frontend):**
+- Tests live alongside source files as `*.test.ts` / `*.test.tsx`.
+- Use `make test-frontend` to run.
+
+**Benchmark baselines (rendering pipeline):**
+- `render_page @ 800px` < 4 ms
+- `render_page @ 1200px` < 8 ms
+- Run `make bench` during PR review whenever `src-tauri/src/lib.rs` or `src-tauri/benches/rendering.rs` is touched. Regressions must be explained and justified before merging.
+
 ## Code Style
 
 - Conventional commits: feat, fix, docs, chore, refactor, test, ci, build, perf, style

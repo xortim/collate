@@ -6,7 +6,10 @@ use std::sync::{Arc, Mutex};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use pdfium_render::prelude::*;
 use serde::Serialize;
-use tauri::State;
+use tauri::{http, Manager, State};
+
+mod render;
+pub use render::{encode_bmp, encode_jpeg, rasterise_page, rgba_to_rgb, render_page_jpeg};
 
 // ---------------------------------------------------------------------------
 // App state
@@ -164,40 +167,7 @@ async fn get_page_image(
 
     tokio::task::spawn_blocking(move || -> Result<String, String> {
         let doc = entry.doc.lock().unwrap();
-
-        let page = doc
-            .pages()
-            .get(page_index as i32)
-            .map_err(|e| format!("Failed to get page {page_index}: {e:?}"))?;
-
-        // set_reverse_byte_order makes pdfium output RGBA directly so
-        // as_raw_bytes() needs no post-processing channel swap.
-        let render_config = PdfRenderConfig::new()
-            .set_target_width(width as i32)
-            .set_reverse_byte_order(true);
-
-        let bitmap = page
-            .render_with_config(&render_config)
-            .map_err(|e| format!("Failed to render page: {e:?}"))?;
-
-        let raw = bitmap.as_raw_bytes();
-        let rgba = image::RgbaImage::from_raw(bitmap.width() as u32, bitmap.height() as u32, raw)
-            .ok_or_else(|| "Bitmap buffer too small".to_string())?;
-
-        // Flatten RGBA → RGB. JPEG has no alpha channel; PDF page backgrounds
-        // are always white so transparent areas are already white in the bitmap.
-        let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
-
-        // JPEG encodes in ~20ms vs ~300ms for PNG DEFLATE at this resolution.
-        // Quality 90 is visually lossless for PDF content at normal viewing scale.
-        let mut jpeg_bytes: Vec<u8> = Vec::with_capacity(200_000);
-        image::codecs::jpeg::JpegEncoder::new_with_quality(
-            &mut std::io::Cursor::new(&mut jpeg_bytes),
-            90,
-        )
-        .encode_image(&rgb)
-        .map_err(|e| format!("Failed to encode JPEG: {e}"))?;
-
+        let jpeg_bytes = render_page_jpeg(&doc, page_index, width)?;
         Ok(BASE64.encode(&jpeg_bytes))
     })
     .await
@@ -230,6 +200,62 @@ pub fn run() {
         .manage(AppState {
             documents: Mutex::new(HashMap::new()),
             next_id: AtomicU32::new(0),
+        })
+        // ---------------------------------------------------------------------------
+        // Page image protocol — collate://localhost/{doc_id}/{page_index}/{width}
+        //
+        // Returns raw RGBA bytes directly to the WebView, bypassing JPEG encoding.
+        // The frontend paints them onto a <canvas> via ImageData. This eliminates
+        // the dominant pipeline cost (8 ms/page for JPEG encode at 1200 px) down
+        // to just the pdfium rasterise step (~0.3 ms).
+        //
+        // Rust note: the closure must be Send + Sync + 'static — it captures nothing
+        // from the outer scope, receiving &AppHandle per-request instead.
+        // ---------------------------------------------------------------------------
+        .register_uri_scheme_protocol("collate", |app, request| {
+            fn err(status: u16, msg: &str) -> http::Response<Vec<u8>> {
+                http::Response::builder()
+                    .status(status)
+                    .body(msg.as_bytes().to_vec())
+                    .unwrap()
+            }
+
+            // Path: /{doc_id}/{page_index}/{width}
+            let path = request.uri().path().trim_start_matches('/');
+            let parts: Vec<&str> = path.split('/').collect();
+            if parts.len() != 3 {
+                return err(400, "expected path /{doc_id}/{page_index}/{width}");
+            }
+            let (doc_id, page_index, width) = match (
+                parts[0].parse::<u32>(),
+                parts[1].parse::<u32>(),
+                parts[2].parse::<u32>(),
+            ) {
+                (Ok(a), Ok(b), Ok(c)) => (a, b, c),
+                _ => return err(400, "path components must be unsigned integers"),
+            };
+
+            let state = app.app_handle().state::<AppState>();
+            let entry = {
+                let docs = state.documents.lock().unwrap();
+                match docs.get(&doc_id).cloned() {
+                    Some(e) => e,
+                    None => return err(404, &format!("document {doc_id} not found")),
+                }
+            };
+
+            let doc = entry.doc.lock().unwrap();
+            match rasterise_page(&doc, page_index, width) {
+                Ok((rgba, w, h)) => http::Response::builder()
+                    .status(200)
+                    // BMP is natively decoded by WebKit — no JS codec work needed.
+                    // Using <img src="collate://..."> bypasses CORS entirely, which
+                    // is why we use BMP rather than raw bytes + fetch().
+                    .header("Content-Type", "image/bmp")
+                    .body(encode_bmp(&rgba, w, h))
+                    .unwrap(),
+                Err(e) => err(500, &e),
+            }
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

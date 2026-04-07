@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Props {
@@ -13,34 +12,35 @@ interface Props {
 }
 
 /**
- * Loads and displays a single PDF page image.
+ * Loads and displays a single PDF page via the collate:// URI scheme protocol.
+ *
+ * The protocol handler rasterises the page and returns a BMP image (~0.3 ms
+ * encode cost vs ~8 ms for JPEG). Using <img src> rather than fetch() bypasses
+ * WKWebView's CORS restrictions on custom schemes — image loads are always
+ * same-origin from the browser's perspective.
+ *
+ * URL: collate://localhost/{docId}/{pageIndex}/{physicalWidth}
  *
  * Lifecycle:
- *   mount   → fire get_page_image, show skeleton placeholder
- *   loaded  → display <img>
- *   unmount → cancel inflight request (ignore result), clear src to free memory
+ *   mount   → set img src, show skeleton placeholder
+ *   loaded  → display image (onLoad)
+ *   unmount → clear src to cancel any inflight load
  */
 export function PageImage({ docId, pageIndex, width, widthPts, heightPts }: Props) {
-  const [src, setSrc] = useState<string | null>(null);
+  const [src, setSrc] = useState("");
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    setSrc(null);
+    setLoaded(false);
     setError(null);
 
     const dpr = Math.min(window.devicePixelRatio, 2);
     const physicalWidth = Math.round(width * dpr);
-    invoke<string>("get_page_image", { docId, pageIndex, width: physicalWidth })
-      .then((data) => {
-        if (!cancelled) setSrc(`data:image/jpeg;base64,${data}`);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(String(e));
-      });
+    setSrc(`collate://localhost/${docId}/${pageIndex}/${physicalWidth}`);
 
     return () => {
-      cancelled = true;
+      setSrc(""); // cancels any inflight image load
     };
   }, [docId, pageIndex, width]);
 
@@ -57,22 +57,23 @@ export function PageImage({ docId, pageIndex, width, widthPts, heightPts }: Prop
     );
   }
 
-  if (!src) {
-    return (
-      <Skeleton
-        className="w-full rounded-md"
-        style={{ aspectRatio }}
-        aria-label={`Loading page ${pageIndex + 1}`}
-      />
-    );
-  }
-
   return (
-    <img
-      src={src}
-      alt={`Page ${pageIndex + 1}`}
-      className="w-full shadow-sm block rounded-md"
-      style={{ aspectRatio }}
-    />
+    <>
+      {!loaded && (
+        <Skeleton
+          className="w-full rounded-md"
+          style={{ aspectRatio }}
+          aria-label={`Loading page ${pageIndex + 1}`}
+        />
+      )}
+      <img
+        src={src}
+        alt={`Page ${pageIndex + 1}`}
+        className="w-full shadow-sm block rounded-md"
+        style={{ aspectRatio, display: loaded ? "block" : "none" }}
+        onLoad={() => setLoaded(true)}
+        onError={() => setError("Failed to render")}
+      />
+    </>
   );
 }
