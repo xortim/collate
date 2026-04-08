@@ -36,15 +36,27 @@ describe("Toolbar", () => {
     expect(screen.getByRole("button", { name: /opening/i })).toBeDisabled();
   });
 
-  it("stub buttons (undo, redo, zoom, find, print) are disabled", () => {
+  it("stub buttons (undo, redo, find, print) are disabled", () => {
     renderToolbar({ onOpen: vi.fn(), loading: false });
     expect(screen.getByRole("button", { name: /undo/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /redo/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /zoom out/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /zoom in/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /fit page/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /find/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /print/i })).toBeDisabled();
+  });
+
+  it("zoom buttons are enabled and functional", async () => {
+    useAppStore.setState({ zoom: 75, zoomMode: "manual" });
+    renderToolbar({ onOpen: vi.fn(), loading: false });
+    expect(screen.getByRole("button", { name: /zoom out/i })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: /zoom in/i })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: /fit width/i })).not.toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: /zoom in/i }));
+    expect(useAppStore.getState().zoom).toBe(100);
+    expect(useAppStore.getState().zoomMode).toBe("manual");
+
+    await userEvent.click(screen.getByRole("button", { name: /fit width/i }));
+    expect(useAppStore.getState().zoomMode).toBe("fit-width");
   });
 
   it("cycles theme on toggle button click", async () => {

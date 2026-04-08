@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export type Theme = "light" | "dark" | "system";
+export type ZoomMode = "fit-width" | "manual";
 
 interface AppStore {
   activePage: number;
@@ -12,6 +13,8 @@ interface AppStore {
   setTheme(theme: Theme): void;
   zoom: number;
   setZoom(zoom: number): void;
+  zoomMode: ZoomMode;
+  setZoomMode(mode: ZoomMode): void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -23,8 +26,10 @@ export const useAppStore = create<AppStore>()(
       setSidebarWidth: (width) => set({ sidebarWidth: width }),
       theme: "system",
       setTheme: (theme) => set({ theme }),
-      zoom: 100,
+      zoom: 75,
       setZoom: (zoom) => set({ zoom }),
+      zoomMode: "manual",
+      setZoomMode: (zoomMode) => set({ zoomMode }),
     }),
     {
       name: "collate-settings",

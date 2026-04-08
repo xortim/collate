@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   FolderOpen,
   Maximize2,
@@ -29,6 +30,8 @@ interface ToolbarProps {
   loading: boolean;
 }
 
+const ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200, 300, 400];
+
 const THEME_CYCLE: Theme[] = ["system", "light", "dark"];
 
 const THEME_ICON: Record<Theme, React.ReactNode> = {
@@ -46,11 +49,52 @@ const THEME_LABEL: Record<Theme, string> = {
 export function Toolbar({ onOpen, loading }: ToolbarProps) {
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
+  const zoom = useAppStore((s) => s.zoom);
+  const zoomMode = useAppStore((s) => s.zoomMode);
+  const setZoom = useAppStore((s) => s.setZoom);
+  const setZoomMode = useAppStore((s) => s.setZoomMode);
 
   function cycleTheme() {
     const next = THEME_CYCLE[(THEME_CYCLE.indexOf(theme) + 1) % THEME_CYCLE.length];
     setTheme(next);
   }
+
+  function zoomIn() {
+    const next = ZOOM_STEPS.find((s) => s > zoom) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1];
+    setZoom(next);
+    setZoomMode("manual");
+  }
+
+  function zoomOut() {
+    const prev = [...ZOOM_STEPS].reverse().find((s) => s < zoom) ?? ZOOM_STEPS[0];
+    setZoom(prev);
+    setZoomMode("manual");
+  }
+
+  function fitWidth() {
+    setZoomMode("fit-width");
+  }
+
+  // Keyboard shortcuts: ⌘+/⌘= zoom in, ⌘- zoom out, ⌘0 fit width.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!e.metaKey && !e.ctrlKey) return;
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        zoomIn();
+      } else if (e.key === "-") {
+        e.preventDefault();
+        zoomOut();
+      } else if (e.key === "0") {
+        e.preventDefault();
+        fitWidth();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  // Re-register when zoom changes so zoomIn/zoomOut close over the current value.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoom]);
 
   return (
     <TooltipProvider delayDuration={600}>
@@ -92,29 +136,49 @@ export function Toolbar({ onOpen, loading }: ToolbarProps) {
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-8" disabled aria-label="Zoom out">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-8"
+              onClick={zoomOut}
+              disabled={zoom <= ZOOM_STEPS[0] && zoomMode === "manual"}
+              aria-label="Zoom out"
+            >
               <ZoomOut className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Zoom Out — coming in P1.4</TooltipContent>
+          <TooltipContent>Zoom Out ({modKey()}−)</TooltipContent>
         </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-8" disabled aria-label="Zoom in">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-8"
+              onClick={zoomIn}
+              disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1] && zoomMode === "manual"}
+              aria-label="Zoom in"
+            >
               <ZoomIn className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Zoom In — coming in P1.4</TooltipContent>
+          <TooltipContent>Zoom In ({modKey()}+)</TooltipContent>
         </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-8" disabled aria-label="Fit page">
+            <Button
+              size="icon"
+              variant={zoomMode === "fit-width" ? "secondary" : "ghost"}
+              className="size-8"
+              onClick={fitWidth}
+              aria-label="Fit width"
+            >
               <Maximize2 className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Fit Page — coming in P1.4</TooltipContent>
+          <TooltipContent>Fit Width ({modKey()}0)</TooltipContent>
         </Tooltip>
 
         <div aria-hidden className="w-px h-5 bg-border mx-1 shrink-0" />

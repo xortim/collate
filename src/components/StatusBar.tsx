@@ -7,6 +7,7 @@ interface StatusBarProps {
 export function StatusBar({ pageCount }: StatusBarProps) {
   const activePage = useAppStore((s) => s.activePage);
   const zoom = useAppStore((s) => s.zoom);
+  const zoomMode = useAppStore((s) => s.zoomMode);
 
   if (pageCount == null) return null;
 
@@ -15,7 +16,9 @@ export function StatusBar({ pageCount }: StatusBarProps) {
       <span>
         Page {activePage + 1} of {pageCount}
       </span>
-      <span>{zoom}%</span>
+      <span>
+        {zoomMode === "fit-width" ? "Fit" : `${zoom}%`}
+      </span>
     </footer>
   );
 }
