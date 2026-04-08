@@ -122,6 +122,13 @@ pub fn render_page_jpeg(
 /// the declared dimensions — this invariant is always satisfied when `rgba`
 /// comes from `rasterise_page`.
 pub fn encode_bmp(rgba: &[u8], width: u32, height: u32) -> Vec<u8> {
+    let required = (width as usize) * (height as usize) * 4;
+    assert!(
+        rgba.len() >= required,
+        "RGBA buffer too small: need {required} bytes for {width}×{height}, got {}",
+        rgba.len()
+    );
+
     // BMP rows must be padded to a 4-byte boundary.
     let row_stride = (width as usize * 3 + 3) & !3;
     let pixel_data_size = row_stride * height as usize;

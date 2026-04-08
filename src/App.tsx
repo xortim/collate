@@ -1,17 +1,19 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { PageViewer, PageViewerHandle } from "./components/PageViewer";
 import { PageSidebar } from "./components/PageSidebar";
-import { Button } from "@/components/ui/button";
+import { Toolbar } from "./components/Toolbar";
+import { StatusBar } from "./components/StatusBar";
 import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarInset,
   SidebarProvider,
-  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useAppStore } from "@/store";
+import { useTheme } from "@/hooks/useTheme";
 
 interface PageSize {
   width_pts: number;
@@ -32,6 +34,17 @@ function App() {
 
   const viewerRef = useRef<PageViewerHandle>(null);
   const sidebarWidth = useAppStore((s) => s.sidebarWidth);
+  const theme = useAppStore((s) => s.theme);
+  const setTheme = useAppStore((s) => s.setTheme);
+
+  // Apply theme (dark class on <html>) and keep it in sync with OS changes
+  useTheme();
+
+  // Sync native menu checkmarks whenever theme changes.
+  // Fires on startup (picks up persisted value) and after toolbar cycle changes.
+  useEffect(() => {
+    invoke("set_menu_theme", { theme });
+  }, [theme]);
 
   async function handleOpen() {
     const path = await openDialog({
@@ -60,6 +73,21 @@ function App() {
     }
   }
 
+  // Listen for native menu events forwarded from the Rust backend
+  useEffect(() => {
+    const unlistenOpen = listen<void>("menu-open", () => handleOpen());
+    const unlistenTheme = listen<string>("menu-theme", (e) =>
+      setTheme(e.payload as "light" | "dark" | "system")
+    );
+    return () => {
+      unlistenOpen.then((fn) => fn());
+      unlistenTheme.then((fn) => fn());
+    };
+    // handleOpen is defined in render scope but only reads stable refs/setState.
+    // Omitting from deps avoids re-registering listeners on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     // SidebarProvider manages open/closed state, Cmd+B shortcut, and cookie
     // persistence. --sidebar-width overrides the default 16rem to a narrower
@@ -80,29 +108,15 @@ function App() {
       )}
 
       <SidebarInset className="flex flex-col overflow-hidden">
-        <header className="flex items-center gap-2 px-3 h-11 shrink-0">
-          <SidebarTrigger />
-          <Separator orientation="vertical" className="h-5" />
-          <Button size="sm" onClick={handleOpen} disabled={loading}>
-            {loading ? "Opening…" : "Open PDF"}
-          </Button>
-
-          {manifest && (
-            <span className="text-sm text-muted-foreground truncate">
-              <span className="font-medium text-foreground">
-                {manifest.filename}
-              </span>
-              {" — "}
-              {manifest.page_count} page{manifest.page_count !== 1 ? "s" : ""}
-            </span>
-          )}
-
-          {error && (
-            <span className="text-sm text-destructive truncate">{error}</span>
-          )}
-        </header>
+        <Toolbar onOpen={handleOpen} loading={loading} />
 
         <Separator />
+
+        {error && (
+          <div className="px-3 py-1 text-sm text-destructive bg-destructive/10 shrink-0">
+            {error}
+          </div>
+        )}
 
         <div className="flex-1 overflow-hidden min-h-0">
           {manifest ? (
@@ -112,11 +126,14 @@ function App() {
               pageSizes={manifest.page_sizes}
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-              Open a PDF to get started
+            <div className="flex flex-col items-center justify-center h-full gap-1 text-sm text-muted-foreground">
+              <span>Open a PDF to get started</span>
+              <span className="text-xs">File → Open… or ⌘O</span>
             </div>
           )}
         </div>
+
+        <StatusBar pageCount={manifest?.page_count} />
       </SidebarInset>
     </SidebarProvider>
   );

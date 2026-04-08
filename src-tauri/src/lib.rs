@@ -5,8 +5,9 @@ use std::sync::{Arc, Mutex};
 
 use pdfium_render::prelude::*;
 use serde::Serialize;
-use tauri::{http, Manager, State};
+use tauri::{http, menu::MenuItemKind, Emitter, Manager, State};
 
+mod menu;
 mod render;
 pub use render::{encode_bmp, encode_jpeg, rasterise_page, rgba_to_rgb};
 
@@ -153,6 +154,51 @@ fn close_document(doc_id: u32, state: State<AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Called by the frontend to keep the native menu checkmarks in sync with the
+/// Zustand theme state (on startup with the persisted value, and after toolbar
+/// theme changes that bypass the menu).
+#[tauri::command]
+fn set_menu_theme(app: tauri::AppHandle, theme: String) {
+    set_theme_checks(&app, &theme);
+}
+
+// ---------------------------------------------------------------------------
+// Menu helpers
+// ---------------------------------------------------------------------------
+
+/// Recursively walk `items`, find every CheckMenuItem whose ID starts with
+/// "theme-", and set its checked state based on `selected`.
+///
+/// Menu::get() does not reliably recurse into nested Submenus in all Tauri
+/// 2.x releases, so we traverse manually. The theme items live two levels
+/// deep: Menu → View → Appearance → [theme-system, theme-light, theme-dark].
+fn apply_theme_checks<R: tauri::Runtime>(items: Vec<MenuItemKind<R>>, selected: &str) {
+    for item in items {
+        match item {
+            MenuItemKind::Submenu(sub) => {
+                if let Ok(children) = sub.items() {
+                    apply_theme_checks(children, selected);
+                }
+            }
+            MenuItemKind::Check(check) => {
+                if let Some(theme) = check.id().as_ref().strip_prefix("theme-") {
+                    let _ = check.set_checked(theme == selected);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Update the checked state of the three theme menu items to reflect `selected`
+/// ("system", "light", or "dark"). Called both from on_menu_event (immediate,
+/// no round-trip) and from the set_menu_theme IPC command (startup + toolbar sync).
+fn set_theme_checks(app: &tauri::AppHandle, selected: &str) {
+    let Some(menu) = app.menu() else { return };
+    let Ok(items) = menu.items() else { return };
+    apply_theme_checks(items, selected);
+}
+
 // ---------------------------------------------------------------------------
 // App entry point
 // ---------------------------------------------------------------------------
@@ -168,6 +214,16 @@ pub fn run() {
     );
 
     tauri::Builder::default()
+        .menu(menu::build_menu)
+        .on_menu_event(|app, event| {
+            match event.id().as_ref() {
+                "open" => { let _ = app.emit("menu-open", ()); }
+                "theme-system" => { set_theme_checks(app, "system"); let _ = app.emit("menu-theme", "system"); }
+                "theme-light"  => { set_theme_checks(app, "light");  let _ = app.emit("menu-theme", "light"); }
+                "theme-dark"   => { set_theme_checks(app, "dark");   let _ = app.emit("menu-theme", "dark"); }
+                _ => {}
+            }
+        })
         .manage(AppState {
             documents: Mutex::new(HashMap::new()),
             next_id: AtomicU32::new(0),
@@ -242,11 +298,13 @@ pub fn run() {
                 Err(e) => err(500, &e),
             }
         })
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             open_document,
             close_document,
+            set_menu_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
