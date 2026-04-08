@@ -217,7 +217,11 @@ pub fn run() {
         .menu(menu::build_menu)
         .on_menu_event(|app, event| {
             match event.id().as_ref() {
-                "open" => { let _ = app.emit("menu-open", ()); }
+                "open"  => { let _ = app.emit("menu-open",  ()); }
+                "print" => { let _ = app.emit("menu-print", ()); }
+                "undo"  => { let _ = app.emit("menu-undo",  ()); }
+                "redo"  => { let _ = app.emit("menu-redo",  ()); }
+                "find"  => { let _ = app.emit("menu-find",  ()); }
                 "theme-system" => { set_theme_checks(app, "system"); let _ = app.emit("menu-theme", "system"); }
                 "theme-light"  => { set_theme_checks(app, "light");  let _ = app.emit("menu-theme", "light"); }
                 "theme-dark"   => { set_theme_checks(app, "dark");   let _ = app.emit("menu-theme", "dark"); }

@@ -1,12 +1,15 @@
 import {
   FolderOpen,
+  Maximize2,
   Monitor,
   Moon,
   Printer,
+  Redo2,
+  Search,
   Sun,
+  Undo2,
   ZoomIn,
   ZoomOut,
-  Maximize2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAppStore, type Theme } from "@/store";
+import { modKey, shiftModKey } from "@/lib/platform";
 
 interface ToolbarProps {
   onOpen(): void;
@@ -61,7 +65,27 @@ export function Toolbar({ onOpen, loading }: ToolbarProps) {
               {loading ? "Opening…" : "Open"}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Open PDF (⌘O)</TooltipContent>
+          <TooltipContent>Open PDF ({modKey()}O)</TooltipContent>
+        </Tooltip>
+
+        <div aria-hidden className="w-px h-5 bg-border mx-1 shrink-0" />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="icon" variant="ghost" className="size-8" disabled aria-label="Undo">
+              <Undo2 className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Undo ({modKey()}Z) — coming soon</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="icon" variant="ghost" className="size-8" disabled aria-label="Redo">
+              <Redo2 className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Redo ({shiftModKey()}Z) — coming soon</TooltipContent>
         </Tooltip>
 
         <div aria-hidden className="w-px h-5 bg-border mx-1 shrink-0" />
@@ -97,11 +121,20 @@ export function Toolbar({ onOpen, loading }: ToolbarProps) {
 
         <Tooltip>
           <TooltipTrigger asChild>
+            <Button size="icon" variant="ghost" className="size-8" disabled aria-label="Find">
+              <Search className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Find ({modKey()}F) — coming soon</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
             <Button size="icon" variant="ghost" className="size-8" disabled aria-label="Print">
               <Printer className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Print — coming in P1.6</TooltipContent>
+          <TooltipContent>Print ({modKey()}P) — coming in P1.6</TooltipContent>
         </Tooltip>
 
         <div className="flex-1" />

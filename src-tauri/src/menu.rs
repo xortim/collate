@@ -7,6 +7,10 @@ use tauri::{
 ///
 /// Menu event IDs used by the on_menu_event handler in lib.rs:
 ///   "open"         — File → Open…
+///   "print"        — File → Print…
+///   "undo"         — Edit → Undo
+///   "redo"         — Edit → Redo
+///   "find"         — Edit → Find
 ///   "theme-system" — View → Appearance → System
 ///   "theme-light"  — View → Appearance → Light
 ///   "theme-dark"   — View → Appearance → Dark
@@ -18,10 +22,20 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let app_menu = Submenu::with_items(app, "Collate", true, &[&about, &sep, &quit_app])?;
 
     // ── File ───────────────────────────────────────────────────────────────
-    let open = MenuItem::with_id(app, "open", "Open…", true, Some("CmdOrCtrl+O"))?;
-    let sep2 = PredefinedMenuItem::separator(app)?;
+    let open  = MenuItem::with_id(app, "open",  "Open…",  true, Some("CmdOrCtrl+O"))?;
+    let print = MenuItem::with_id(app, "print", "Print…", true, Some("CmdOrCtrl+P"))?;
+    let sep_file = PredefinedMenuItem::separator(app)?;
     let quit_file = PredefinedMenuItem::quit(app, None)?;
-    let file_menu = Submenu::with_items(app, "File", true, &[&open, &sep2, &quit_file])?;
+    let file_menu =
+        Submenu::with_items(app, "File", true, &[&open, &print, &sep_file, &quit_file])?;
+
+    // ── Edit ───────────────────────────────────────────────────────────────
+    let undo = MenuItem::with_id(app, "undo", "Undo", true, Some("CmdOrCtrl+Z"))?;
+    let redo = MenuItem::with_id(app, "redo", "Redo", true, Some("Shift+CmdOrCtrl+Z"))?;
+    let sep_edit = PredefinedMenuItem::separator(app)?;
+    let find = MenuItem::with_id(app, "find", "Find…", true, Some("CmdOrCtrl+F"))?;
+    let edit_menu =
+        Submenu::with_items(app, "Edit", true, &[&undo, &redo, &sep_edit, &find])?;
 
     // ── View → Appearance ─────────────────────────────────────────────────
     let theme_system = CheckMenuItem::with_id(app, "theme-system", "System", true, true,  None::<&str>)?;
@@ -34,7 +48,7 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     // ── Help (required by macOS HIG) ───────────────────────────────────────
     let help_menu = Submenu::with_items(app, "Help", true, &[])?;
 
-    Menu::with_items(app, &[&app_menu, &file_menu, &view_menu, &help_menu])
+    Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &view_menu, &help_menu])
 }
 
 #[cfg(test)]
