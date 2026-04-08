@@ -61,6 +61,22 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Reset height estimates whenever the container changes width so pages
+    // outside the overscan window use the current width, not a stale estimate.
+    useEffect(() => {
+      const el = parentRef.current;
+      if (!el) return;
+      let lastWidth = el.clientWidth;
+      const ro = new ResizeObserver(() => {
+        if (el.clientWidth !== lastWidth) {
+          lastWidth = el.clientWidth;
+          virtualizer.measure();
+        }
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [virtualizer]);
+
     // Expose scrollToPage to the parent (App) so the sidebar can drive it.
     // align:'start' puts the target page flush with the top of the viewport.
     useImperativeHandle(ref, () => ({
@@ -84,7 +100,7 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
         const pageWidth = Math.max(el!.clientWidth - PAGE_PADDING_X, 100);
         // Compute active page from page sizes directly — more reliable than
         // reading virtualizer items, which only covers the rendered window.
-        let y = 0;
+        let y = PAGE_GAP;
         let active = 0;
         for (let i = 0; i < pageSizes.length; i++) {
           const { width_pts, height_pts } = pageSizes[i];
@@ -108,7 +124,7 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
         {/* Spacer that gives the scrollbar the correct total height. */}
         <div
           className="relative w-full"
-          style={{ height: virtualizer.getTotalSize() }}
+          style={{ height: virtualizer.getTotalSize() + PAGE_GAP }}
         >
           {virtualizer.getVirtualItems().map((item) => {
             const { width_pts, height_pts } = pageSizes[item.index];
@@ -119,7 +135,7 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
               <div
                 key={item.key}
                 className="absolute left-0 right-0 px-4"
-                style={{ top: item.start, paddingBottom: PAGE_GAP }}
+                style={{ top: item.start + PAGE_GAP, paddingBottom: PAGE_GAP }}
               >
                 <PageImage
                   docId={docId}
