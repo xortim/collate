@@ -3,6 +3,13 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
+/* Suppress sidebar transition during drag so the layout tracks the cursor
+   frame-for-frame. The attribute is set/removed by SidebarResizeHandle. */
+body[data-sidebar-dragging] [data-slot="sidebar-gap"],
+body[data-sidebar-dragging] [data-slot="sidebar-container"] {
+  transition: none !important;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
