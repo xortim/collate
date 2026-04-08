@@ -72,7 +72,7 @@ export function PageImage({ docId, pageIndex, width, widthPts, heightPts }: Prop
       <img
         src={src}
         alt={`Page ${pageIndex + 1}`}
-        className="w-full shadow-sm block rounded-md"
+        className="w-full shadow-sm block rounded-md select-none"
         style={{ aspectRatio, display: loaded ? "block" : "none" }}
         onLoad={() => setLoaded(true)}
         onError={() => setError("Failed to render")}
