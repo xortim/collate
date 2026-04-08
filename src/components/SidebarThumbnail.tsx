@@ -63,7 +63,7 @@ export function SidebarThumbnail({
           onLoad={() => setLoaded(true)}
         />
       </div>
-      <span className="text-xs text-muted-foreground select-none">
+      <span className="text-xs leading-none text-muted-foreground select-none">
         {pageIndex + 1}
       </span>
     </button>
