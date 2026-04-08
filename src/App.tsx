@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { EmptyState } from "./components/EmptyState";
 import { PageViewer, PageViewerHandle } from "./components/PageViewer";
 import { PageSidebar } from "./components/PageSidebar";
 import { Toolbar } from "./components/Toolbar";
@@ -126,10 +127,7 @@ function App() {
               pageSizes={manifest.page_sizes}
             />
           ) : (
-            <div className="flex flex-col items-center justify-center h-full gap-1 text-sm text-muted-foreground">
-              <span>Open a PDF to get started</span>
-              <span className="text-xs">File → Open… or ⌘O</span>
-            </div>
+            <EmptyState onOpen={handleOpen} />
           )}
         </div>
 
