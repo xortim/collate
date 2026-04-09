@@ -13,11 +13,24 @@ interface Props {
   onClick(): void;
 }
 
+/** Debounces a value by `delay` ms. The initial value is returned immediately. */
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState<T>(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
 /**
  * A single thumbnail in the page sidebar.
  *
  * Loads the page via the collate:// protocol at the sidebar's current width.
  * Highlights when it is the active (topmost visible) page in the viewer.
+ *
+ * On sidebar resize, the old thumbnail stays visible (CSS-scaled) while the
+ * debounced re-render loads, eliminating skeleton flash during dragging.
  */
 export function SidebarThumbnail({
   docId,
@@ -28,16 +41,20 @@ export function SidebarThumbnail({
   isActive,
   onClick,
 }: Props) {
-  const [src, setSrc] = useState("");
-  const [loaded, setLoaded] = useState(false);
+  const dpr = Math.min(window.devicePixelRatio, 3);
+  const physicalWidth = Math.round(Math.min(width, widthPts) * dpr);
+  const rawSrc = `collate://localhost/${docId}/${pageIndex}/${physicalWidth}`;
+  const debouncedSrc = useDebounce(rawSrc, 150);
+
+  const [displayedSrc, setDisplayedSrc] = useState<string | null>(null);
 
   useEffect(() => {
-    setLoaded(false);
-    const dpr = Math.min(window.devicePixelRatio, 3);
-    const physicalWidth = Math.round(width * dpr);
-    setSrc(`collate://localhost/${docId}/${pageIndex}/${physicalWidth}`);
-    return () => setSrc("");
-  }, [docId, pageIndex, width]);
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => { if (!cancelled) setDisplayedSrc(debouncedSrc); };
+    img.src = debouncedSrc;
+    return () => { cancelled = true; img.src = ""; };
+  }, [debouncedSrc]);
 
   const aspectRatio = `${widthPts} / ${heightPts}`;
 
@@ -52,16 +69,16 @@ export function SidebarThumbnail({
       aria-current={isActive ? "true" : undefined}
     >
       <div className="w-full relative">
-        {!loaded && (
+        {!displayedSrc ? (
           <Skeleton className="w-full rounded-sm" style={{ aspectRatio }} />
+        ) : (
+          <img
+            src={displayedSrc}
+            alt={`Page ${pageIndex + 1}`}
+            className="w-full block rounded-sm shadow-sm"
+            style={{ aspectRatio }}
+          />
         )}
-        <img
-          src={src}
-          alt={`Page ${pageIndex + 1}`}
-          className="w-full block rounded-sm shadow-sm"
-          style={{ aspectRatio, display: loaded ? "block" : "none" }}
-          onLoad={() => setLoaded(true)}
-        />
       </div>
       <span className="text-xs leading-none text-muted-foreground select-none">
         {pageIndex + 1}

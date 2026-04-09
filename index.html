@@ -5,6 +5,26 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tauri + React + Typescript</title>
+  <!-- Prevent theme flash: paint correct background before CSS/React load -->
+  <style>
+    html { background-color: oklch(0.145 0 0); } /* dark default */
+  </style>
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('collate-settings');
+        var theme = stored ? ((JSON.parse(stored).state) || {}).theme || 'system' : 'system';
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var isDark = theme === 'dark' || (theme === 'system' && prefersDark);
+        document.documentElement.classList.toggle('dark', isDark);
+        if (!isDark) {
+          document.documentElement.style.setProperty('background-color', 'oklch(1 0 0)');
+        }
+      } catch (e) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
   </head>
 
   <body>

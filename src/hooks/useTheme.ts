@@ -5,6 +5,7 @@ const DARK_QUERY = "(prefers-color-scheme: dark)";
 
 function applyTheme(isDark: boolean) {
   document.documentElement.classList.toggle("dark", isDark);
+  document.documentElement.style.removeProperty("background-color");
 }
 
 /**

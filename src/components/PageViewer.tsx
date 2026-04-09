@@ -57,6 +57,9 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
     const zoomModeRef = useRef(zoomMode);
     zoomModeRef.current = zoomMode;
 
+    // "down" | "up" | null (null = initial load, no direction yet)
+    const scrollDirectionRef = useRef<"down" | "up" | null>(null);
+
     function pageWidthFor(widthPts: number): number {
       if (zoomModeRef.current === "fit-width") {
         const containerWidth = parentRef.current?.clientWidth ?? 800;
@@ -64,6 +67,11 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
       }
       return Math.round((widthPts * zoomRef.current) / 100);
     }
+
+    // Scale overscan inversely with zoom: at low zoom pages are cheap to
+    // render so we pre-load more; at high zoom we minimise queued work.
+    //   50 % → 3   100 % → 2   150 % → 1   200 %+ → 1
+    const overscan = Math.min(4, Math.max(1, Math.ceil(150 / zoom)));
 
     const virtualizer = useVirtualizer({
       count: pageSizes.length,
@@ -73,9 +81,20 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
         const pageWidth = pageWidthFor(width_pts);
         return Math.round((height_pts / width_pts) * pageWidth) + PAGE_GAP;
       },
-      // Render 2 pages beyond the visible area so the next page is ready
-      // before the user scrolls to it.
-      overscan: 2,
+      overscan,
+      // Only pre-render in the direction of travel. When scrolling down we
+      // pre-render one page below the visible area but not above, and vice
+      // versa. On initial load (null direction) both sides get the buffer.
+      rangeExtractor: (range) => {
+        const dir = scrollDirectionRef.current;
+        const above = dir === "down" ? 0 : range.overscan;
+        const below = dir === "up"   ? 0 : range.overscan;
+        const start = Math.max(0, range.startIndex - above);
+        const end   = Math.min(range.count - 1, range.endIndex + below);
+        const indices: number[] = [];
+        for (let i = start; i <= end; i++) indices.push(i);
+        return indices;
+      },
     });
 
     // estimateSize uses parentRef.current?.clientWidth which is null on the
@@ -102,15 +121,22 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
 
     // In fit-width mode: reset height estimates on container width change and
     // sync the effective zoom % to the store so the status bar stays accurate.
+    // The ResizeObserver is throttled to one update per animation frame so that
+    // rapid window-drag events don't flood React with redundant re-renders.
+    // virtualizer.measure() is intentionally omitted here — the [zoom, zoomMode]
+    // effect below fires immediately after setZoom and calls it exactly once.
     useEffect(() => {
       const el = parentRef.current;
       if (!el) return;
       let lastWidth = el.clientWidth;
+      let rafPending = false;
       const ro = new ResizeObserver(() => {
         if (el.clientWidth === lastWidth) return;
         lastWidth = el.clientWidth;
-        if (zoomModeRef.current === "fit-width") {
-          virtualizer.measure();
+        if (rafPending || zoomModeRef.current !== "fit-width") return;
+        rafPending = true;
+        requestAnimationFrame(() => {
+          rafPending = false;
           if (pageSizes.length > 0) {
             setZoom(
               Math.round(
@@ -120,11 +146,11 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
               )
             );
           }
-        }
+        });
       });
       ro.observe(el);
       return () => ro.disconnect();
-    }, [pageSizes, setZoom, virtualizer]);
+    }, [pageSizes, setZoom]);
 
     // Ctrl+scroll / trackpad pinch: zoom continuously, switch to manual mode.
     useEffect(() => {
@@ -145,10 +171,27 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
     }, [setZoom, setZoomMode]);
 
     // Expose scrollToPage to the parent (App) so the sidebar can drive it.
-    // align:'start' puts the target page flush with the top of the viewport.
+    // We compute the offset directly rather than using virtualizer.scrollToIndex
+    // because scrollToIndex triggers a reconcile loop (scheduleScrollReconcile)
+    // that spins on requestAnimationFrame waiting for the scroll event to update
+    // the virtualizer's cached scrollOffset. In WKWebView the scroll event fires
+    // asynchronously, so the loop runs for up to MAX_RECONCILE_MS (5 s) before
+    // stabilising — causing the 2-3 s freeze observed at 200%+ zoom.
+    // Setting el.scrollTop directly bypasses the loop entirely; the virtualizer's
+    // existing scroll listener picks up the change on the next frame as normal.
     useImperativeHandle(ref, () => ({
       scrollToPage(index) {
-        virtualizer.scrollToIndex(index, { align: "start" });
+        const el = parentRef.current;
+        if (!el) return;
+        let offset = PAGE_GAP;
+        for (let i = 0; i < index; i++) {
+          const { width_pts, height_pts } = pageSizes[i];
+          offset += Math.round((height_pts / width_pts) * pageWidthFor(width_pts)) + PAGE_GAP;
+        }
+        // Set direction before changing scrollTop so the rangeExtractor sees
+        // the correct direction when the virtualizer re-renders on scroll.
+        scrollDirectionRef.current = offset > el.scrollTop ? "down" : "up";
+        el.scrollTop = offset;
       },
     }));
 
@@ -160,9 +203,13 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
       if (!el) return;
       // Fire once immediately so page 0 is marked active before the user scrolls.
       setActivePage(0);
+      let lastActive = 0;
+      let lastScrollTop = 0;
 
       function onScroll() {
         const scrollTop = el!.scrollTop;
+        scrollDirectionRef.current = scrollTop > lastScrollTop ? "down" : "up";
+        lastScrollTop = scrollTop;
         // Compute active page from page sizes directly — more reliable than
         // reading virtualizer items, which only covers the rendered window.
         let y = PAGE_GAP;
@@ -181,7 +228,13 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
           active = i;
           y += h;
         }
-        setActivePage(active);
+        // Only update the store when the active page actually changes — avoids
+        // redundant zustand updates (and React re-renders) while scrolling
+        // within a single page.
+        if (active !== lastActive) {
+          lastActive = active;
+          setActivePage(active);
+        }
       }
 
       el.addEventListener("scroll", onScroll, { passive: true });
