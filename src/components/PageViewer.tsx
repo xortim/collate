@@ -252,7 +252,7 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
       <div
         ref={parentRef}
         className={cn(
-          "h-full bg-gray-200",
+          "h-full bg-zinc-200 dark:bg-zinc-800",
           zoomMode === "fit-width" ? "overflow-y-auto" : "overflow-auto"
         )}
       >

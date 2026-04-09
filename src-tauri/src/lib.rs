@@ -200,6 +200,44 @@ fn set_theme_checks(app: &tauri::AppHandle, selected: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// PDF document menu helpers
+// ---------------------------------------------------------------------------
+
+const PDF_MENU_IDS: &[&str] = &[
+    "print", "undo", "redo", "find", "zoom-in", "zoom-out", "zoom-fit-width",
+];
+
+/// Recursively walk `items`, find every regular MenuItem whose ID is in
+/// PDF_MENU_IDS, and set its enabled state.
+fn apply_pdf_menu_enabled<R: tauri::Runtime>(items: Vec<MenuItemKind<R>>, enabled: bool) {
+    for item in items {
+        match item {
+            MenuItemKind::Submenu(sub) => {
+                if let Ok(children) = sub.items() {
+                    apply_pdf_menu_enabled(children, enabled);
+                }
+            }
+            MenuItemKind::MenuItem(mi) => {
+                if PDF_MENU_IDS.contains(&mi.id().as_ref()) {
+                    let _ = mi.set_enabled(enabled);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Enable or disable the PDF-dependent menu items.
+/// Called by the frontend after open_document succeeds (true) or never needs
+/// disabling at runtime since items start disabled at startup.
+#[tauri::command]
+fn set_pdf_menus_enabled(app: tauri::AppHandle, enabled: bool) {
+    let Some(menu) = app.menu() else { return };
+    let Ok(items) = menu.items() else { return };
+    apply_pdf_menu_enabled(items, enabled);
+}
+
+// ---------------------------------------------------------------------------
 // App entry point
 // ---------------------------------------------------------------------------
 
@@ -222,6 +260,9 @@ pub fn run() {
                 "undo"  => { let _ = app.emit("menu-undo",  ()); }
                 "redo"  => { let _ = app.emit("menu-redo",  ()); }
                 "find"  => { let _ = app.emit("menu-find",  ()); }
+                "zoom-in"        => { let _ = app.emit("menu-zoom-in",        ()); }
+                "zoom-out"       => { let _ = app.emit("menu-zoom-out",       ()); }
+                "zoom-fit-width" => { let _ = app.emit("menu-zoom-fit-width", ()); }
                 "theme-system" => { set_theme_checks(app, "system"); let _ = app.emit("menu-theme", "system"); }
                 "theme-light"  => { set_theme_checks(app, "light");  let _ = app.emit("menu-theme", "light"); }
                 "theme-dark"   => { set_theme_checks(app, "dark");   let _ = app.emit("menu-theme", "dark"); }
@@ -309,6 +350,7 @@ pub fn run() {
             open_document,
             close_document,
             set_menu_theme,
+            set_pdf_menus_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

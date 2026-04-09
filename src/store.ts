@@ -17,6 +17,8 @@ interface AppStore {
   setZoomMode(mode: ZoomMode): void;
 }
 
+export const ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200, 300, 400];
+
 export const useAppStore = create<AppStore>()(
   persist(
     (set) => ({

@@ -13,7 +13,7 @@ import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar";
-import { useAppStore } from "@/store";
+import { useAppStore, ZOOM_STEPS } from "@/store";
 import { useTheme } from "@/hooks/useTheme";
 
 interface PageSize {
@@ -67,6 +67,7 @@ function App() {
       const m = await invoke<DocumentManifest>("open_document", { path });
       setManifest(m);
       useAppStore.getState().setActivePage(0);
+      void invoke("set_pdf_menus_enabled", { enabled: true });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -74,15 +75,49 @@ function App() {
     }
   }
 
+  // Alias Mod+= to Mod++ for zoom in. The native menu owns Mod++ (CmdOrCtrl+Plus);
+  // Mod+= is the unshifted physical key and is not consumed by the menu.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "=") {
+        e.preventDefault();
+        const { zoom, setZoom, setZoomMode } = useAppStore.getState();
+        const next = ZOOM_STEPS.find((s) => s > zoom) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1];
+        setZoom(next);
+        setZoomMode("manual");
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   // Listen for native menu events forwarded from the Rust backend
   useEffect(() => {
     const unlistenOpen = listen<void>("menu-open", () => handleOpen());
     const unlistenTheme = listen<string>("menu-theme", (e) =>
       setTheme(e.payload as "light" | "dark" | "system")
     );
+    const unlistenZoomIn = listen<void>("menu-zoom-in", () => {
+      const { zoom, setZoom, setZoomMode } = useAppStore.getState();
+      const next = ZOOM_STEPS.find((s) => s > zoom) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1];
+      setZoom(next);
+      setZoomMode("manual");
+    });
+    const unlistenZoomOut = listen<void>("menu-zoom-out", () => {
+      const { zoom, setZoom, setZoomMode } = useAppStore.getState();
+      const prev = [...ZOOM_STEPS].reverse().find((s) => s < zoom) ?? ZOOM_STEPS[0];
+      setZoom(prev);
+      setZoomMode("manual");
+    });
+    const unlistenZoomFit = listen<void>("menu-zoom-fit-width", () => {
+      useAppStore.getState().setZoomMode("fit-width");
+    });
     return () => {
       unlistenOpen.then((fn) => fn());
       unlistenTheme.then((fn) => fn());
+      unlistenZoomIn.then((fn) => fn());
+      unlistenZoomOut.then((fn) => fn());
+      unlistenZoomFit.then((fn) => fn());
     };
     // handleOpen is defined in render scope but only reads stable refs/setState.
     // Omitting from deps avoids re-registering listeners on every render.
@@ -109,7 +144,7 @@ function App() {
       )}
 
       <SidebarInset className="flex flex-col overflow-hidden">
-        <Toolbar onOpen={handleOpen} loading={loading} />
+        <Toolbar onOpen={handleOpen} loading={loading} hasDocument={manifest !== null} />
 
         <Separator />
 
