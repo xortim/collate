@@ -713,7 +713,23 @@ Right-click on a thumbnail (sidebar or grid) opens a context menu. Built with sh
 
 The context menu respects multi-selection. If 5 pages are selected and the user right-clicks one of them, the action applies to all 5.
 
-### 7.10 Form Field Rendering
+### 7.10 Document-Dependent UI State
+
+Any interactive element — toolbar button, menu item, context menu item — that requires an open document must be **disabled** (not hidden) when no document is open. Examples: zoom controls, page navigation, File → Close, File → Print, all document-mutation actions.
+
+**Rule:** derive enabled/disabled state from the zustand store's document presence. A single selector (`hasDocument`) is the source of truth; components must not invent their own ad-hoc checks.
+
+```ts
+// in the zustand store
+const hasDocument = useDocumentStore(s => s.activeDocId !== null);
+
+// in a component
+<Button disabled={!hasDocument} onClick={handleClose}>Close</Button>
+```
+
+Hiding elements when no document is open is not acceptable — the user needs to know those actions exist. Disabled state with a tooltip explaining why is the correct pattern.
+
+### 7.11 Form Field Rendering
 
 For each page that has form fields, React renders a `<FormFieldOverlay>` positioned on top of the `<PageImage>`. The overlay contains absolutely positioned HTML inputs derived from the `FieldDescriptor` list.
 
@@ -829,11 +845,13 @@ Future: Tauri's built-in updater plugin checks a GitHub Releases endpoint for ne
 
 ### 9.1 Overview
 
+Testing follows strict TDD: write a failing test before writing any production code. A feature is not started until a test exists for it and not finished until that test passes.
+
 Testing is split by boundary. Rust tests validate PDF operations and state management. Frontend tests validate interaction logic. Integration tests validate the IPC contract. Manual testing validates the UX — the user is the final QA gate.
 
 ### 9.2 Rust Unit Tests
 
-Rust's built-in test framework (`#[cfg(test)]` modules) covers the backend. No external test runner needed.
+Rust's built-in test framework (`#[cfg(test)]` modules) covers the backend. No external test runner needed. Write the `#[cfg(test)]` block with failing assertions before implementing the function under test.
 
 | Module | What's tested | Example |
 |---|---|---|
@@ -869,7 +887,7 @@ These fixtures are committed to the repo. Generate them with a script where poss
 
 ### 9.4 Frontend Tests
 
-Lightweight. The frontend is a view layer — most logic lives in Rust. Frontend tests cover interaction wiring, not business logic.
+Lightweight. The frontend is a view layer — most logic lives in Rust. Frontend tests cover interaction wiring, not business logic. Write the `*.test.tsx` file with failing assertions before writing the component.
 
 | Scope | Tool | What's tested |
 |---|---|---|

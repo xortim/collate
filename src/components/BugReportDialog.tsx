@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -31,14 +32,22 @@ type FormValues = z.infer<typeof schema>;
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  prefill?: { title: string; description: string };
 }
 
-export function BugReportDialog({ open, onOpenChange }: Props) {
+export function BugReportDialog({ open, onOpenChange, prefill }: Props) {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { title: "", description: "" },
     mode: "onTouched",
   });
+
+  // When the dialog opens with prefill data, populate the form immediately.
+  useEffect(() => {
+    if (open && prefill) {
+      form.reset(prefill);
+    }
+  }, [open, prefill]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSubmit(_values: FormValues) {
     // TODO: wire up to a real reporting backend when available

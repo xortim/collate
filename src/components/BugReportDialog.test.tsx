@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { BugReportDialog } from "./BugReportDialog";
@@ -92,6 +92,42 @@ describe("BugReportDialog", () => {
     render(<BugReportDialog open={true} onOpenChange={onOpenChange} />);
     await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("pre-fills title and description when prefill prop is provided", () => {
+    render(
+      <BugReportDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        prefill={{
+          title: "Error: could not open file",
+          description: "Error: could not open file\n\nVersion: 0.1.0\nPlatform: macOS",
+        }}
+      />
+    );
+    expect(screen.getByLabelText(/bug title/i)).toHaveValue(
+      "Error: could not open file"
+    );
+    expect(screen.getByLabelText(/description/i)).toHaveValue(
+      "Error: could not open file\n\nVersion: 0.1.0\nPlatform: macOS"
+    );
+  });
+
+  it("submit is enabled once prefill satisfies validation", async () => {
+    render(
+      <BugReportDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        prefill={{
+          title: "Error: could not open file",
+          description: "Error: could not open file\n\nVersion: 0.1.0\nPlatform: macOS",
+        }}
+      />
+    );
+    // form.reset() in the useEffect triggers a re-render — wait for it
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /submit/i })).toBeEnabled()
+    );
   });
 
   it("calls onOpenChange(false) on successful submit", async () => {

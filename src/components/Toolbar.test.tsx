@@ -6,10 +6,10 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { useAppStore } from "@/store";
 
 // SidebarTrigger inside Toolbar requires the context from SidebarProvider
-function renderToolbar(props: { onOpen: () => void; loading: boolean }) {
+function renderToolbar(props: { onOpen: () => void; loading: boolean; hasDocument?: boolean }) {
   return render(
     <SidebarProvider>
-      <Toolbar {...props} />
+      <Toolbar {...props} hasDocument={props.hasDocument ?? false} />
     </SidebarProvider>
   );
 }
@@ -46,7 +46,7 @@ describe("Toolbar", () => {
 
   it("zoom buttons are enabled and functional", async () => {
     useAppStore.setState({ zoom: 75, zoomMode: "manual" });
-    renderToolbar({ onOpen: vi.fn(), loading: false });
+    renderToolbar({ onOpen: vi.fn(), loading: false, hasDocument: true });
     expect(screen.getByRole("button", { name: /zoom out/i })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: /zoom in/i })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: /fit width/i })).not.toBeDisabled();
@@ -57,6 +57,24 @@ describe("Toolbar", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /fit width/i }));
     expect(useAppStore.getState().zoomMode).toBe("fit-width");
+  });
+
+  describe("document-dependent disabled state", () => {
+    it("disables zoom controls when no document is open", () => {
+      useAppStore.setState({ zoom: 75, zoomMode: "manual" });
+      renderToolbar({ onOpen: vi.fn(), loading: false, hasDocument: false });
+      expect(screen.getByRole("button", { name: /zoom out/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /zoom in/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /fit width/i })).toBeDisabled();
+    });
+
+    it("enables zoom controls when a document is open", () => {
+      useAppStore.setState({ zoom: 75, zoomMode: "manual" });
+      renderToolbar({ onOpen: vi.fn(), loading: false, hasDocument: true });
+      expect(screen.getByRole("button", { name: /zoom out/i })).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: /zoom in/i })).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: /fit width/i })).not.toBeDisabled();
+    });
   });
 
   it("cycles theme on toggle button click", async () => {

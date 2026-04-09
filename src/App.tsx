@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
+import { toast } from "sonner";
+import { BugIcon } from "lucide-react";
 import { BugReportDialog } from "./components/BugReportDialog";
 import { EmptyState } from "./components/EmptyState";
 import { PageViewer, PageViewerHandle } from "./components/PageViewer";
@@ -9,6 +12,13 @@ import { PageSidebar } from "./components/PageSidebar";
 import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
 import { Separator } from "@/components/ui/separator";
+import { Toaster } from "@/components/ui/sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Sidebar,
   SidebarInset,
@@ -31,9 +41,9 @@ interface DocumentManifest {
 
 function App() {
   const [manifest, setManifest] = useState<DocumentManifest | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [bugReportOpen, setBugReportOpen] = useState(false);
+  const [bugPrefill, setBugPrefill] = useState<{ title: string; description: string } | null>(null);
 
   const viewerRef = useRef<PageViewerHandle>(null);
   const manifestRef = useRef<DocumentManifest | null>(null);
@@ -63,6 +73,22 @@ function App() {
     useAppStore.getState().setActivePage(0);
   }
 
+  async function openBugReportForError(message: string) {
+    const version = await getVersion().catch(() => "unknown");
+    const platform = /mac/i.test(navigator.platform)
+      ? "macOS"
+      : /win/i.test(navigator.platform)
+        ? "Windows"
+        : "Linux";
+    setBugPrefill({
+      title: `Error: ${message.slice(0, 50)}`,
+      description:
+        `Error: ${message}\n\nVersion: ${version}\nPlatform: ${platform}` +
+        `\n\n---\nPlease describe what you were doing when this happened:\n`,
+    });
+    setBugReportOpen(true);
+  }
+
   async function handleOpen() {
     const path = await openDialog({
       multiple: false,
@@ -72,7 +98,6 @@ function App() {
     if (!path) return;
 
     setLoading(true);
-    setError(null);
 
     if (manifest) {
       await invoke("close_document", { docId: manifest.doc_id });
@@ -85,7 +110,25 @@ function App() {
       useAppStore.getState().setActivePage(0);
       void invoke("set_pdf_menus_enabled", { enabled: true });
     } catch (e) {
-      setError(String(e));
+      const message = String(e);
+      toast.error(message, {
+        id: "pdf-error",
+        duration: Infinity,
+        closeButton: true,
+        action: {
+          label: (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span><BugIcon className="size-4" /></span>
+                </TooltipTrigger>
+                <TooltipContent>Report a bug</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ),
+          onClick: () => openBugReportForError(message),
+        },
+      });
     } finally {
       setLoading(false);
     }
@@ -190,12 +233,6 @@ function App() {
 
         <Separator />
 
-        {error && (
-          <div className="px-3 py-1 text-sm text-destructive bg-destructive/10 shrink-0">
-            {error}
-          </div>
-        )}
-
         <div className="flex-1 overflow-hidden min-h-0">
           {manifest ? (
             <PageViewer
@@ -211,7 +248,15 @@ function App() {
         <StatusBar pageCount={manifest?.page_count} />
       </SidebarInset>
 
-      <BugReportDialog open={bugReportOpen} onOpenChange={setBugReportOpen} />
+      <BugReportDialog
+        open={bugReportOpen}
+        onOpenChange={(next) => {
+          setBugReportOpen(next);
+          if (!next) setBugPrefill(null);
+        }}
+        prefill={bugPrefill ?? undefined}
+      />
+      <Toaster theme={theme} richColors position="bottom-right" closeButton />
     </SidebarProvider>
   );
 }
