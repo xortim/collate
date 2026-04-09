@@ -204,7 +204,7 @@ fn set_theme_checks(app: &tauri::AppHandle, selected: &str) {
 // ---------------------------------------------------------------------------
 
 const PDF_MENU_IDS: &[&str] = &[
-    "print", "undo", "redo", "find", "zoom-in", "zoom-out", "zoom-fit-width",
+    "close", "print", "undo", "redo", "find", "zoom-in", "zoom-out", "zoom-fit-width",
 ];
 
 /// Recursively walk `items`, find every regular MenuItem whose ID is in
@@ -256,6 +256,7 @@ pub fn run() {
         .on_menu_event(|app, event| {
             match event.id().as_ref() {
                 "open"  => { let _ = app.emit("menu-open",  ()); }
+                "close" => { let _ = app.emit("menu-close", ()); }
                 "print" => { let _ = app.emit("menu-print", ()); }
                 "undo"  => { let _ = app.emit("menu-undo",  ()); }
                 "redo"  => { let _ = app.emit("menu-redo",  ()); }

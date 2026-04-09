@@ -34,6 +34,7 @@ function App() {
   const [loading, setLoading] = useState(false);
 
   const viewerRef = useRef<PageViewerHandle>(null);
+  const manifestRef = useRef<DocumentManifest | null>(null);
   const sidebarWidth = useAppStore((s) => s.sidebarWidth);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
@@ -46,6 +47,19 @@ function App() {
   useEffect(() => {
     invoke("set_menu_theme", { theme });
   }, [theme]);
+
+  // Keep ref in sync so menu event listeners (registered once on mount) always
+  // see the current manifest rather than the stale closure value.
+  useEffect(() => { manifestRef.current = manifest; }, [manifest]);
+
+  async function handleClose() {
+    const m = manifestRef.current;
+    if (!m) return;
+    await invoke("close_document", { docId: m.doc_id });
+    await invoke("set_pdf_menus_enabled", { enabled: false });
+    setManifest(null);
+    useAppStore.getState().setActivePage(0);
+  }
 
   async function handleOpen() {
     const path = await openDialog({
@@ -93,7 +107,8 @@ function App() {
 
   // Listen for native menu events forwarded from the Rust backend
   useEffect(() => {
-    const unlistenOpen = listen<void>("menu-open", () => handleOpen());
+    const unlistenOpen  = listen<void>("menu-open",  () => handleOpen());
+    const unlistenClose = listen<void>("menu-close", () => handleClose());
     const unlistenTheme = listen<string>("menu-theme", (e) =>
       setTheme(e.payload as "light" | "dark" | "system")
     );
@@ -114,6 +129,7 @@ function App() {
     });
     return () => {
       unlistenOpen.then((fn) => fn());
+      unlistenClose.then((fn) => fn());
       unlistenTheme.then((fn) => fn());
       unlistenZoomIn.then((fn) => fn());
       unlistenZoomOut.then((fn) => fn());

@@ -7,6 +7,7 @@ use tauri::{
 ///
 /// Menu event IDs used by the on_menu_event handler in lib.rs:
 ///   "open"           — File → Open…
+///   "close"          — File → Close
 ///   "print"          — File → Print…
 ///   "undo"           — Edit → Undo
 ///   "redo"           — Edit → Redo
@@ -25,12 +26,13 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let app_menu = Submenu::with_items(app, "Collate", true, &[&about, &sep, &quit_app])?;
 
     // ── File ───────────────────────────────────────────────────────────────
-    let open  = MenuItem::with_id(app, "open",  "Open…",  true, Some("CmdOrCtrl+O"))?;
+    let open  = MenuItem::with_id(app, "open",  "Open…",  true,  Some("CmdOrCtrl+O"))?;
+    let close = MenuItem::with_id(app, "close", "Close",  false, Some("CmdOrCtrl+W"))?;
     let print = MenuItem::with_id(app, "print", "Print…", false, Some("CmdOrCtrl+P"))?;
     let sep_file = PredefinedMenuItem::separator(app)?;
     let quit_file = PredefinedMenuItem::quit(app, None)?;
     let file_menu =
-        Submenu::with_items(app, "File", true, &[&open, &print, &sep_file, &quit_file])?;
+        Submenu::with_items(app, "File", true, &[&open, &close, &print, &sep_file, &quit_file])?;
 
     // ── Edit ───────────────────────────────────────────────────────────────
     let undo = MenuItem::with_id(app, "undo", "Undo", false, Some("CmdOrCtrl+Z"))?;
