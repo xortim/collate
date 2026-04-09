@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { BugReportDialog } from "./components/BugReportDialog";
 import { EmptyState } from "./components/EmptyState";
 import { PageViewer, PageViewerHandle } from "./components/PageViewer";
 import { PageSidebar } from "./components/PageSidebar";
@@ -13,7 +14,7 @@ import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar";
-import { useAppStore, ZOOM_STEPS } from "@/store";
+import { useAppStore, ZOOM_STEPS, PageDisplay } from "@/store";
 import { useTheme } from "@/hooks/useTheme";
 
 interface PageSize {
@@ -32,6 +33,7 @@ function App() {
   const [manifest, setManifest] = useState<DocumentManifest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [bugReportOpen, setBugReportOpen] = useState(false);
 
   const viewerRef = useRef<PageViewerHandle>(null);
   const manifestRef = useRef<DocumentManifest | null>(null);
@@ -127,6 +129,21 @@ function App() {
     const unlistenZoomFit = listen<void>("menu-zoom-fit-width", () => {
       useAppStore.getState().setZoomMode("fit-width");
     });
+    // Document menu stubs — not yet implemented, no-op for now
+    const unlistenRotateCw     = listen<void>("menu-rotate-cw",      () => { /* stub */ });
+    const unlistenRotateCwAll  = listen<void>("menu-rotate-cw-all",  () => { /* stub */ });
+    const unlistenRotateCcw    = listen<void>("menu-rotate-ccw",     () => { /* stub */ });
+    const unlistenRotateCcwAll = listen<void>("menu-rotate-ccw-all", () => { /* stub */ });
+    const unlistenSplit        = listen<void>("menu-split",          () => { /* stub */ });
+    const unlistenMerge        = listen<void>("menu-merge",          () => { /* stub */ });
+    const unlistenImport       = listen<void>("menu-import-pages",   () => { /* stub */ });
+    // View → Page Display
+    const unlistenDisplay = listen<string>("menu-display", (e) => {
+      useAppStore.getState().setPageDisplay(e.payload as PageDisplay);
+    });
+    const unlistenReportBug = listen<void>("menu-report-bug", () => {
+      setBugReportOpen(true);
+    });
     return () => {
       unlistenOpen.then((fn) => fn());
       unlistenClose.then((fn) => fn());
@@ -134,6 +151,15 @@ function App() {
       unlistenZoomIn.then((fn) => fn());
       unlistenZoomOut.then((fn) => fn());
       unlistenZoomFit.then((fn) => fn());
+      unlistenRotateCw.then((fn) => fn());
+      unlistenRotateCwAll.then((fn) => fn());
+      unlistenRotateCcw.then((fn) => fn());
+      unlistenRotateCcwAll.then((fn) => fn());
+      unlistenSplit.then((fn) => fn());
+      unlistenMerge.then((fn) => fn());
+      unlistenImport.then((fn) => fn());
+      unlistenDisplay.then((fn) => fn());
+      unlistenReportBug.then((fn) => fn());
     };
     // handleOpen is defined in render scope but only reads stable refs/setState.
     // Omitting from deps avoids re-registering listeners on every render.
@@ -184,6 +210,8 @@ function App() {
 
         <StatusBar pageCount={manifest?.page_count} />
       </SidebarInset>
+
+      <BugReportDialog open={bugReportOpen} onOpenChange={setBugReportOpen} />
     </SidebarProvider>
   );
 }

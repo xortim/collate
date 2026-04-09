@@ -204,11 +204,20 @@ fn set_theme_checks(app: &tauri::AppHandle, selected: &str) {
 // ---------------------------------------------------------------------------
 
 const PDF_MENU_IDS: &[&str] = &[
-    "close", "print", "undo", "redo", "find", "zoom-in", "zoom-out", "zoom-fit-width",
+    "close", "print", "undo", "redo", "find",
+    "zoom-in", "zoom-out", "zoom-fit-width",
+    // Document menu
+    "rotate-cw", "rotate-cw-all", "rotate-ccw", "rotate-ccw-all",
+    "split", "merge", "import-pages",
 ];
 
-/// Recursively walk `items`, find every regular MenuItem whose ID is in
-/// PDF_MENU_IDS, and set its enabled state.
+/// CheckMenuItem IDs that are enabled only when a document is open.
+const PDF_CHECK_MENU_IDS: &[&str] = &[
+    "display-continuous", "display-single", "display-spread",
+];
+
+/// Recursively walk `items`, find every MenuItem/CheckMenuItem whose ID is in
+/// the PDF_MENU_IDS / PDF_CHECK_MENU_IDS lists, and set its enabled state.
 fn apply_pdf_menu_enabled<R: tauri::Runtime>(items: Vec<MenuItemKind<R>>, enabled: bool) {
     for item in items {
         match item {
@@ -222,19 +231,56 @@ fn apply_pdf_menu_enabled<R: tauri::Runtime>(items: Vec<MenuItemKind<R>>, enable
                     let _ = mi.set_enabled(enabled);
                 }
             }
+            MenuItemKind::Check(check) => {
+                if PDF_CHECK_MENU_IDS.contains(&check.id().as_ref()) {
+                    let _ = check.set_enabled(enabled);
+                }
+            }
             _ => {}
         }
     }
 }
 
 /// Enable or disable the PDF-dependent menu items.
-/// Called by the frontend after open_document succeeds (true) or never needs
-/// disabling at runtime since items start disabled at startup.
+/// Called by the frontend after open_document succeeds (true) or on close (false).
 #[tauri::command]
 fn set_pdf_menus_enabled(app: tauri::AppHandle, enabled: bool) {
     let Some(menu) = app.menu() else { return };
     let Ok(items) = menu.items() else { return };
     apply_pdf_menu_enabled(items, enabled);
+}
+
+// ---------------------------------------------------------------------------
+// Display mode helpers
+// ---------------------------------------------------------------------------
+
+/// Recursively walk `items`, update the three display-* CheckMenuItems so that
+/// only the one matching `selected` is checked.
+fn apply_display_checks<R: tauri::Runtime>(items: Vec<MenuItemKind<R>>, selected: &str) {
+    for item in items {
+        match item {
+            MenuItemKind::Submenu(sub) => {
+                if let Ok(children) = sub.items() {
+                    apply_display_checks(children, selected);
+                }
+            }
+            MenuItemKind::Check(check) => {
+                if let Some(mode) = check.id().as_ref().strip_prefix("display-") {
+                    let _ = check.set_checked(mode == selected);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Toggle the Page Display check-marks to reflect `selected`
+/// ("continuous", "single", or "spread"). Called from on_menu_event so the
+/// native menu reflects the new state immediately without a round-trip.
+fn set_display_checks(app: &tauri::AppHandle, selected: &str) {
+    let Some(menu) = app.menu() else { return };
+    let Ok(items) = menu.items() else { return };
+    apply_display_checks(items, selected);
 }
 
 // ---------------------------------------------------------------------------
@@ -261,12 +307,25 @@ pub fn run() {
                 "undo"  => { let _ = app.emit("menu-undo",  ()); }
                 "redo"  => { let _ = app.emit("menu-redo",  ()); }
                 "find"  => { let _ = app.emit("menu-find",  ()); }
+                // Document menu — stubs forwarded to frontend for future implementation
+                "rotate-cw"      => { let _ = app.emit("menu-rotate-cw",      ()); }
+                "rotate-cw-all"  => { let _ = app.emit("menu-rotate-cw-all",  ()); }
+                "rotate-ccw"     => { let _ = app.emit("menu-rotate-ccw",     ()); }
+                "rotate-ccw-all" => { let _ = app.emit("menu-rotate-ccw-all", ()); }
+                "split"          => { let _ = app.emit("menu-split",          ()); }
+                "merge"          => { let _ = app.emit("menu-merge",          ()); }
+                "import-pages"   => { let _ = app.emit("menu-import-pages",   ()); }
+                // View → Page Display — toggle check-marks in Rust, then notify frontend
+                "display-continuous" => { set_display_checks(app, "continuous"); let _ = app.emit("menu-display", "continuous"); }
+                "display-single"     => { set_display_checks(app, "single");     let _ = app.emit("menu-display", "single"); }
+                "display-spread"     => { set_display_checks(app, "spread");     let _ = app.emit("menu-display", "spread"); }
                 "zoom-in"        => { let _ = app.emit("menu-zoom-in",        ()); }
                 "zoom-out"       => { let _ = app.emit("menu-zoom-out",       ()); }
                 "zoom-fit-width" => { let _ = app.emit("menu-zoom-fit-width", ()); }
                 "theme-system" => { set_theme_checks(app, "system"); let _ = app.emit("menu-theme", "system"); }
                 "theme-light"  => { set_theme_checks(app, "light");  let _ = app.emit("menu-theme", "light"); }
                 "theme-dark"   => { set_theme_checks(app, "dark");   let _ = app.emit("menu-theme", "dark"); }
+                "report-bug"   => { let _ = app.emit("menu-report-bug", ()); }
                 _ => {}
             }
         })

@@ -6,18 +6,28 @@ use tauri::{
 /// Build the application menu.
 ///
 /// Menu event IDs used by the on_menu_event handler in lib.rs:
-///   "open"           — File → Open…
-///   "close"          — File → Close
-///   "print"          — File → Print…
-///   "undo"           — Edit → Undo
-///   "redo"           — Edit → Redo
-///   "find"           — Edit → Find
-///   "zoom-in"        — View → Zoom In
-///   "zoom-out"       — View → Zoom Out
-///   "zoom-fit-width" — View → Fit Width
-///   "theme-system"   — View → Appearance → System
-///   "theme-light"    — View → Appearance → Light
-///   "theme-dark"     — View → Appearance → Dark
+///   "open"               — File → Open…
+///   "close"              — File → Close
+///   "print"              — File → Print…
+///   "undo"               — Edit → Undo
+///   "redo"               — Edit → Redo
+///   "find"               — Edit → Find
+///   "rotate-cw"          — Document → Rotate Page Clockwise
+///   "rotate-cw-all"      — Document → Rotate All Pages Clockwise
+///   "rotate-ccw"         — Document → Rotate Page Counter-Clockwise
+///   "rotate-ccw-all"     — Document → Rotate All Pages Counter-Clockwise
+///   "split"              — Document → Split Document…
+///   "merge"              — Document → Merge Document…
+///   "import-pages"       — Document → Import Pages…
+///   "display-continuous" — View → Page Display → Continuous Scroll
+///   "display-single"     — View → Page Display → Single Page
+///   "display-spread"     — View → Page Display → Two-Page Spread
+///   "zoom-in"            — View → Zoom In
+///   "zoom-out"           — View → Zoom Out
+///   "zoom-fit-width"     — View → Fit Width
+///   "theme-system"       — View → Appearance → System
+///   "theme-light"        — View → Appearance → Light
+///   "theme-dark"         — View → Appearance → Dark
 pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     // ── App menu (macOS: first submenu becomes the app-name menu) ──────────
     let about = PredefinedMenuItem::about(app, Some("About Collate"), None)?;
@@ -42,6 +52,36 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let edit_menu =
         Submenu::with_items(app, "Edit", true, &[&undo, &redo, &sep_edit, &find])?;
 
+    // ── Document ───────────────────────────────────────────────────────────
+    let rotate_cw      = MenuItem::with_id(app, "rotate-cw",      "Rotate Page Clockwise",              false, Some("CmdOrCtrl+]"))?;
+    let rotate_cw_all  = MenuItem::with_id(app, "rotate-cw-all",  "Rotate All Pages Clockwise",         false, None::<&str>)?;
+    let rotate_ccw     = MenuItem::with_id(app, "rotate-ccw",     "Rotate Page Counter-Clockwise",      false, Some("CmdOrCtrl+["))?;
+    let rotate_ccw_all = MenuItem::with_id(app, "rotate-ccw-all", "Rotate All Pages Counter-Clockwise", false, None::<&str>)?;
+    let sep_doc1       = PredefinedMenuItem::separator(app)?;
+    let split          = MenuItem::with_id(app, "split",          "Split Document…",                    false, None::<&str>)?;
+    let sep_doc2       = PredefinedMenuItem::separator(app)?;
+    let merge          = MenuItem::with_id(app, "merge",          "Merge Document…",                    false, None::<&str>)?;
+    let import_pages   = MenuItem::with_id(app, "import-pages",   "Import Pages…",                      false, None::<&str>)?;
+    let document_menu  = Submenu::with_items(
+        app,
+        "Document",
+        true,
+        &[
+            &rotate_cw, &rotate_cw_all, &rotate_ccw, &rotate_ccw_all,
+            &sep_doc1,
+            &split,
+            &sep_doc2,
+            &merge, &import_pages,
+        ],
+    )?;
+
+    // ── View → Page Display ────────────────────────────────────────────────
+    let display_continuous = CheckMenuItem::with_id(app, "display-continuous", "Continuous Scroll", false, true,  None::<&str>)?;
+    let display_single     = CheckMenuItem::with_id(app, "display-single",     "Single Page",       false, false, None::<&str>)?;
+    let display_spread     = CheckMenuItem::with_id(app, "display-spread",     "Two-Page Spread",   false, false, None::<&str>)?;
+    let display_menu       = Submenu::with_items(app, "Page Display", true, &[&display_continuous, &display_single, &display_spread])?;
+    let sep_display        = PredefinedMenuItem::separator(app)?;
+
     // ── View → Zoom ────────────────────────────────────────────────────────
     let zoom_in   = MenuItem::with_id(app, "zoom-in",       "Zoom In",   false, Some("CmdOrCtrl+="))?;
     let zoom_out  = MenuItem::with_id(app, "zoom-out",      "Zoom Out",  false, Some("CmdOrCtrl+-"))?;
@@ -54,12 +94,18 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let theme_light  = CheckMenuItem::with_id(app, "theme-light",  "Light",  true, false, None::<&str>)?;
     let theme_dark   = CheckMenuItem::with_id(app, "theme-dark",   "Dark",   true, false, None::<&str>)?;
     let appearance   = Submenu::with_items(app, "Appearance", true, &[&theme_system, &theme_light, &theme_dark])?;
-    let view_menu    = Submenu::with_items(app, "View", true, &[&zoom_menu, &sep_zoom, &appearance])?;
+    let view_menu    = Submenu::with_items(
+        app,
+        "View",
+        true,
+        &[&display_menu, &sep_display, &zoom_menu, &sep_zoom, &appearance],
+    )?;
 
     // ── Help (required by macOS HIG) ───────────────────────────────────────
-    let help_menu = Submenu::with_items(app, "Help", true, &[])?;
+    let report_bug = MenuItem::with_id(app, "report-bug", "Report a Bug…", true, None::<&str>)?;
+    let help_menu = Submenu::with_items(app, "Help", true, &[&report_bug])?;
 
-    Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &view_menu, &help_menu])
+    Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &document_menu, &view_menu, &help_menu])
 }
 
 #[cfg(test)]
