@@ -60,6 +60,13 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
     // "down" | "up" | null (null = initial load, no direction yet)
     const scrollDirectionRef = useRef<"down" | "up" | null>(null);
 
+    // When scrollToPage() drives a programmatic scroll, the browser may clamp
+    // scrollTop so that onScroll's position-based computation picks the wrong
+    // page (e.g. the topmost visible page instead of the clicked one).
+    // scrollToPage sets this to the intended index; onScroll consumes it once
+    // and skips the position calculation entirely for that event.
+    const pendingActiveRef = useRef<number | null>(null);
+
     function pageWidthFor(widthPts: number): number {
       if (zoomModeRef.current === "fit-width") {
         const containerWidth = parentRef.current?.clientWidth ?? 800;
@@ -191,7 +198,17 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
         // Set direction before changing scrollTop so the rangeExtractor sees
         // the correct direction when the virtualizer re-renders on scroll.
         scrollDirectionRef.current = offset > el.scrollTop ? "down" : "up";
+        // Tell onScroll to use this index directly rather than re-deriving the
+        // active page from the scroll position. This handles two cases:
+        //   1. scrollTop is clamped (offset > maxScrollTop) so position maths
+        //      would pick the wrong page.
+        //   2. The page is already visible and scrollTop doesn't change, so no
+        //      scroll event fires at all — the direct setActivePage below
+        //      handles highlighting immediately in that case.
+        pendingActiveRef.current = index;
         el.scrollTop = offset;
+        // Optimistic direct set for the no-scroll-event case (page already visible).
+        useAppStore.getState().setActivePage(index);
       },
     }));
 
@@ -210,24 +227,34 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
         const scrollTop = el!.scrollTop;
         scrollDirectionRef.current = scrollTop > lastScrollTop ? "down" : "up";
         lastScrollTop = scrollTop;
-        // Compute active page from page sizes directly — more reliable than
-        // reading virtualizer items, which only covers the rendered window.
-        let y = PAGE_GAP;
-        let active = 0;
-        for (let i = 0; i < pageSizes.length; i++) {
-          const { width_pts, height_pts } = pageSizes[i];
-          // Each page may have a different width in manual mode.
-          const pw =
-            zoomModeRef.current === "fit-width"
-              ? Math.max(el!.clientWidth - PAGE_PADDING_X, 100)
-              : Math.round((width_pts * zoomRef.current) / 100);
-          const h = Math.round((height_pts / width_pts) * pw) + PAGE_GAP;
-          // A page is "active" once its top edge has reached 50px below the
-          // scroll position — a small grace zone so flipping is not too eager.
-          if (y > scrollTop + 50) break;
-          active = i;
-          y += h;
+
+        let active: number;
+        if (pendingActiveRef.current !== null) {
+          // This scroll was triggered by scrollToPage(). Use the intended page
+          // directly — position maths would pick the wrong page when scrollTop
+          // is clamped (offset > maxScrollTop) or when multiple pages are
+          // visible simultaneously at low zoom.
+          active = pendingActiveRef.current;
+          pendingActiveRef.current = null;
+        } else {
+          // Natural scroll: find the topmost page whose top edge has passed
+          // 50px below the scroll position (grace zone so flipping isn't eager).
+          let y = PAGE_GAP;
+          active = 0;
+          for (let i = 0; i < pageSizes.length; i++) {
+            const { width_pts, height_pts } = pageSizes[i];
+            // Each page may have a different width in manual mode.
+            const pw =
+              zoomModeRef.current === "fit-width"
+                ? Math.max(el!.clientWidth - PAGE_PADDING_X, 100)
+                : Math.round((width_pts * zoomRef.current) / 100);
+            const h = Math.round((height_pts / width_pts) * pw) + PAGE_GAP;
+            if (y > scrollTop + 50) break;
+            active = i;
+            y += h;
+          }
         }
+
         // Only update the store when the active page actually changes — avoids
         // redundant zustand updates (and React re-renders) while scrolling
         // within a single page.
