@@ -12,6 +12,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -58,7 +59,7 @@ export function BugReportDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent showCloseButton={false}>
+      <DialogContent showCloseButton={false} className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Report a Bug</DialogTitle>
         </DialogHeader>
@@ -80,7 +81,7 @@ export function BugReportDialog({ open, onOpenChange }: Props) {
                       {...field}
                     />
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="min-h-5" />
                 </FormItem>
               )}
             />
@@ -93,12 +94,15 @@ export function BugReportDialog({ open, onOpenChange }: Props) {
                   <FormLabel>Description</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Steps to reproduce, expected vs actual behaviour (at least 20 characters)"
-                      rows={5}
+                      placeholder="Your report…"
+                      rows={8}
                       {...field}
                     />
                   </FormControl>
-                  <FormMessage />
+                  <FormDescription>
+                    Include steps to reproduce, expected behavior, and what actually happened.
+                  </FormDescription>
+                  <FormMessage className="min-h-5" />
                 </FormItem>
               )}
             />

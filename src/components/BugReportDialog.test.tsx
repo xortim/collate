@@ -23,7 +23,14 @@ describe("BugReportDialog", () => {
 
   it("shows no validation errors on initial open (not noisy)", () => {
     render(<BugReportDialog open={true} onOpenChange={vi.fn()} />);
-    expect(screen.queryByText(/at least/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/at least \d+ characters/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the description helper text immediately", () => {
+    render(<BugReportDialog open={true} onOpenChange={vi.fn()} />);
+    expect(
+      screen.getByText(/include steps to reproduce/i)
+    ).toBeInTheDocument();
   });
 
   it("shows title error only after the title field is blurred with a short value", async () => {
