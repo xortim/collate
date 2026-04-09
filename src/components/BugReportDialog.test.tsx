@@ -21,27 +21,43 @@ describe("BugReportDialog", () => {
     expect(screen.getByRole("button", { name: /submit/i })).toBeDisabled();
   });
 
-  it("submit button is disabled when title is too short (< 10 chars)", async () => {
+  it("shows no validation errors on initial open (not noisy)", () => {
+    render(<BugReportDialog open={true} onOpenChange={vi.fn()} />);
+    expect(screen.queryByText(/at least/i)).not.toBeInTheDocument();
+  });
+
+  it("shows title error only after the title field is blurred with a short value", async () => {
     render(<BugReportDialog open={true} onOpenChange={vi.fn()} />);
     await userEvent.type(screen.getByLabelText(/bug title/i), "Short");
-    await userEvent.type(
-      screen.getByLabelText(/description/i),
-      "This is a long enough description to pass validation"
-    );
-    expect(screen.getByRole("button", { name: /submit/i })).toBeDisabled();
+    await userEvent.tab(); // blur
+    expect(
+      await screen.findByText(/at least 10 characters/i)
+    ).toBeInTheDocument();
   });
 
-  it("submit button is disabled when description is too short (< 20 chars)", async () => {
+  it("shows description error only after the description field is blurred with a short value", async () => {
     render(<BugReportDialog open={true} onOpenChange={vi.fn()} />);
-    await userEvent.type(
-      screen.getByLabelText(/bug title/i),
-      "This is a valid title"
-    );
     await userEvent.type(screen.getByLabelText(/description/i), "Too short");
-    expect(screen.getByRole("button", { name: /submit/i })).toBeDisabled();
+    await userEvent.tab();
+    expect(
+      await screen.findByText(/at least 20 characters/i)
+    ).toBeInTheDocument();
   });
 
-  it("submit button is enabled when both fields meet minimum length", async () => {
+  it("clears error once the field meets the minimum length", async () => {
+    render(<BugReportDialog open={true} onOpenChange={vi.fn()} />);
+    const input = screen.getByLabelText(/bug title/i);
+    await userEvent.type(input, "Short");
+    await userEvent.tab();
+    await screen.findByText(/at least 10 characters/i);
+
+    await userEvent.clear(input);
+    await userEvent.type(input, "This is a valid title");
+    await userEvent.tab();
+    expect(screen.queryByText(/at least 10 characters/i)).not.toBeInTheDocument();
+  });
+
+  it("submit button is enabled when both fields are valid", async () => {
     render(<BugReportDialog open={true} onOpenChange={vi.fn()} />);
     await userEvent.type(
       screen.getByLabelText(/bug title/i),
@@ -71,7 +87,7 @@ describe("BugReportDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("resets fields and calls onOpenChange(false) on submit", async () => {
+  it("calls onOpenChange(false) on successful submit", async () => {
     const onOpenChange = vi.fn();
     render(<BugReportDialog open={true} onOpenChange={onOpenChange} />);
     await userEvent.type(

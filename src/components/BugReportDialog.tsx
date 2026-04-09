@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -7,9 +9,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+
+const schema = z.object({
+  title: z.string().min(10, "Title must be at least 10 characters"),
+  description: z.string().min(20, "Description must be at least 20 characters"),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 interface Props {
   open: boolean;
@@ -17,62 +33,86 @@ interface Props {
 }
 
 export function BugReportDialog({ open, onOpenChange }: Props) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { title: "", description: "" },
+    mode: "onTouched",
+  });
 
-  const canSubmit = title.length >= 10 && description.length >= 20;
-
-  function handleSubmit() {
+  function handleSubmit(_values: FormValues) {
     // TODO: wire up to a real reporting backend when available
-    setTitle("");
-    setDescription("");
+    form.reset();
     onOpenChange(false);
   }
 
   function handleCancel() {
-    setTitle("");
-    setDescription("");
+    form.reset();
     onOpenChange(false);
   }
 
+  // Reset form state whenever the dialog opens fresh
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) form.reset();
+    onOpenChange(nextOpen);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>Report a Bug</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-3">
-          <div className="grid gap-1.5">
-            <Label htmlFor="bug-title">Bug Title</Label>
-            <Input
-              id="bug-title"
-              placeholder="Brief summary (at least 10 characters)"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit(handleSubmit)}
+            className="grid gap-3"
+          >
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Bug Title</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Brief summary (at least 10 characters)"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="bug-description">Description</Label>
-            <Textarea
-              id="bug-description"
-              placeholder="Steps to reproduce, expected vs actual behaviour (at least 20 characters)"
-              rows={5}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Steps to reproduce, expected vs actual behaviour (at least 20 characters)"
+                      rows={5}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleCancel}>
-            Cancel
-          </Button>
-          <Button disabled={!canSubmit} onClick={handleSubmit}>
-            Submit
-          </Button>
-        </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={handleCancel}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!form.formState.isValid}>
+                Submit
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
