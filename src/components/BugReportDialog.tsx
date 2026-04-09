@@ -111,7 +111,7 @@ export function BugReportDialog({ open, onOpenChange }: Props) {
               <Button type="button" variant="outline" onClick={handleCancel}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={!form.formState.isValid}>
+              <Button type="submit">
                 Submit
               </Button>
             </DialogFooter>

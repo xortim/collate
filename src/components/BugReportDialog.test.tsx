@@ -16,9 +16,22 @@ describe("BugReportDialog", () => {
     expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
   });
 
-  it("submit button is disabled when fields are empty", () => {
+  it("submit button is always enabled", () => {
     render(<BugReportDialog open={true} onOpenChange={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /submit/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /submit/i })).toBeEnabled();
+  });
+
+  it("clicking submit with empty fields shows validation errors without closing", async () => {
+    const onOpenChange = vi.fn();
+    render(<BugReportDialog open={true} onOpenChange={onOpenChange} />);
+    await userEvent.click(screen.getByRole("button", { name: /submit/i }));
+    expect(
+      await screen.findByText(/at least 10 characters/i)
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/at least 20 characters/i)
+    ).toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
   it("shows no validation errors on initial open (not noisy)", () => {
