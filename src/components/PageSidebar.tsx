@@ -41,8 +41,9 @@ export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       const w = entry.contentBoxSize[0].inlineSize;
-      // Subtract horizontal padding (pl-3 = 12px left, pr-4 = 16px right = 28px total).
-      setThumbnailWidth(Math.max(40, Math.floor(w - 28)));
+      // w is already the content-box width (inside padding). Subtract only the
+      // button's p-2 padding (8px each side = 16px) to match the image display width.
+      setThumbnailWidth(Math.max(40, Math.floor(w - 16)));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -83,7 +84,7 @@ export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
       </SidebarHeader>
       <SidebarContent className="overflow-hidden p-0">
         {/* containerRef drives both ResizeObserver and the virtualizer. */}
-        <div ref={containerRef} className="h-full overflow-y-auto py-2 pl-3 pr-4">
+        <div ref={containerRef} className="h-full overflow-y-auto py-2 pl-3 pr-6">
           <div
             className="relative w-full"
             style={{ height: thumbVirtualizer.getTotalSize() }}
