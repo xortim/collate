@@ -14,12 +14,6 @@ import { StatusBar } from "./components/StatusBar";
 import { Separator } from "@/components/ui/separator";
 import { Toaster } from "@/components/ui/sonner";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   Sidebar,
   SidebarInset,
   SidebarProvider,
@@ -113,19 +107,10 @@ function App() {
       const message = String(e);
       toast.error(message, {
         id: "pdf-error",
-        duration: Infinity,
-        closeButton: true,
+        duration: 6000,
+        onClick: () => toast.dismiss("pdf-error"),
         action: {
-          label: (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span><BugIcon className="size-4" /></span>
-                </TooltipTrigger>
-                <TooltipContent>Report a bug</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ),
+          label: <BugIcon className="size-4" />,
           onClick: () => openBugReportForError(message),
         },
       });
@@ -148,6 +133,17 @@ function App() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Clicking anywhere on a Sonner toast dismisses it.
+  useEffect(() => {
+    function onDocumentClick(e: MouseEvent) {
+      if ((e.target as Element).closest('[data-sonner-toast]')) {
+        toast.dismiss("pdf-error");
+      }
+    }
+    document.addEventListener('click', onDocumentClick);
+    return () => document.removeEventListener('click', onDocumentClick);
   }, []);
 
   // Listen for native menu events forwarded from the Rust backend
@@ -256,7 +252,7 @@ function App() {
         }}
         prefill={bugPrefill ?? undefined}
       />
-      <Toaster theme={theme} richColors position="bottom-right" closeButton />
+      <Toaster theme={theme} position="top-center" offset={{ top: 56 }} />
     </SidebarProvider>
   );
 }
