@@ -41,6 +41,7 @@ export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
   const selectedPages = useAppStore((s) => s.selectedPages);
   const togglePageSelection = useAppStore((s) => s.togglePageSelection);
   const selectPageRange = useAppStore((s) => s.selectPageRange);
+  const clearSelection = useAppStore((s) => s.clearSelection);
 
   const handleThumbClick = useCallback(
     (index: number, e: React.MouseEvent) => {
@@ -50,11 +51,12 @@ export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
       } else if (e.shiftKey) {
         selectPageRange(anchorRef.current, index);
       } else {
+        clearSelection();
         onScrollToPage(index);
         anchorRef.current = index;
       }
     },
-    [togglePageSelection, selectPageRange, onScrollToPage]
+    [togglePageSelection, selectPageRange, clearSelection, onScrollToPage]
   );
 
   // Measure available content width and update thumbnails when it changes.

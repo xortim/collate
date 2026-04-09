@@ -88,7 +88,7 @@ export function Toolbar({ onOpen, loading, hasDocument, canUndo, canRedo, onSave
         <ButtonGroup>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" variant="outline" onClick={onOpen} disabled={loading} className="gap-1.5">
+              <Button size="default" variant="outline" onClick={onOpen} disabled={loading} className="gap-1.5">
                 <FolderOpen className="size-4" />
                 {loading ? "Opening…" : "Open"}
               </Button>

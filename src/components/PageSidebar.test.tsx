@@ -61,6 +61,13 @@ describe("PageSidebar — click navigation", () => {
     await userEvent.click(getByTestId("thumb-2"));
     expect(onScrollToPage).toHaveBeenCalledWith(2);
   });
+
+  it("plain click clears any existing selection", () => {
+    useAppStore.setState({ selectedPages: new Set([1, 2]) });
+    const { getByTestId } = renderSidebar();
+    fireEvent.click(getByTestId("thumb-0"));
+    expect(useAppStore.getState().selectedPages.size).toBe(0);
+  });
 });
 
 describe("PageSidebar — modifier-key selection", () => {
