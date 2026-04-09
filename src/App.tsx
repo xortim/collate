@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import { BugIcon } from "lucide-react";
 import { BugReportDialog } from "./components/BugReportDialog";
+import { ShortcutOverlay } from "./components/ShortcutOverlay";
 import { EmptyState } from "./components/EmptyState";
 import { PageViewer, PageViewerHandle } from "./components/PageViewer";
 import { PageSidebar } from "./components/PageSidebar";
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAppStore, ZOOM_STEPS, PageDisplay } from "@/store";
 import { useTheme } from "@/hooks/useTheme";
+import { platformName } from "@/lib/platform";
 
 interface PageSize {
   width_pts: number;
@@ -30,7 +32,10 @@ interface DocumentManifest {
   doc_id: number;
   page_count: number;
   filename: string;
+  path: string;
   page_sizes: PageSize[];
+  can_undo: boolean;
+  can_redo: boolean;
 }
 
 function App() {
@@ -38,6 +43,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [bugReportOpen, setBugReportOpen] = useState(false);
   const [bugPrefill, setBugPrefill] = useState<{ title: string; description: string } | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   const viewerRef = useRef<PageViewerHandle>(null);
   const manifestRef = useRef<DocumentManifest | null>(null);
@@ -65,19 +71,55 @@ function App() {
     await invoke("set_pdf_menus_enabled", { enabled: false });
     setManifest(null);
     useAppStore.getState().setActivePage(0);
+    useAppStore.getState().clearSelection();
+    useAppStore.getState().setIsDirty(false);
+  }
+
+  async function handleSave(path?: string) {
+    const m = manifestRef.current;
+    if (!m) return;
+    const savePath = path ?? m.path;
+    try {
+      await invoke("save_document", { docId: m.doc_id, path: savePath });
+      useAppStore.getState().setIsDirty(false);
+    } catch (e) {
+      toast.error(String(e), { id: "pdf-error", duration: 6000 });
+    }
+  }
+
+  async function handleSaveAs() {
+    const path = await saveDialog({ filters: [{ name: "PDF", extensions: ["pdf"] }] });
+    if (path) await handleSave(path);
+  }
+
+  async function handleUndo() {
+    const m = manifestRef.current;
+    if (!m) return;
+    try {
+      const next = await invoke<DocumentManifest>("undo_document", { docId: m.doc_id });
+      setManifest(next);
+    } catch (e) {
+      toast.error(String(e), { id: "pdf-error", duration: 6000 });
+    }
+  }
+
+  async function handleRedo() {
+    const m = manifestRef.current;
+    if (!m) return;
+    try {
+      const next = await invoke<DocumentManifest>("redo_document", { docId: m.doc_id });
+      setManifest(next);
+    } catch (e) {
+      toast.error(String(e), { id: "pdf-error", duration: 6000 });
+    }
   }
 
   async function openBugReportForError(message: string) {
     const version = await getVersion().catch(() => "unknown");
-    const platform = /mac/i.test(navigator.platform)
-      ? "macOS"
-      : /win/i.test(navigator.platform)
-        ? "Windows"
-        : "Linux";
     setBugPrefill({
       title: `Error: ${message.slice(0, 50)}`,
       description:
-        `Error: ${message}\n\nVersion: ${version}\nPlatform: ${platform}` +
+        `Error: ${message}\n\nVersion: ${version}\nPlatform: ${platformName}` +
         `\n\n---\nPlease describe what you were doing when this happened:\n`,
     });
     setBugReportOpen(true);
@@ -102,6 +144,8 @@ function App() {
       const m = await invoke<DocumentManifest>("open_document", { path });
       setManifest(m);
       useAppStore.getState().setActivePage(0);
+      useAppStore.getState().clearSelection();
+      useAppStore.getState().setIsDirty(false);
       void invoke("set_pdf_menus_enabled", { enabled: true });
     } catch (e) {
       const message = String(e);
@@ -121,6 +165,7 @@ function App() {
 
   // Alias Mod+= to Mod++ for zoom in. The native menu owns Mod++ (CmdOrCtrl+Plus);
   // Mod+= is the unshifted physical key and is not consumed by the menu.
+  // Also handles ? (shortcut overlay) and Cmd+A (select all pages).
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "=") {
@@ -129,6 +174,17 @@ function App() {
         const next = ZOOM_STEPS.find((s) => s > zoom) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1];
         setZoom(next);
         setZoomMode("manual");
+      }
+      if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+        const m = manifestRef.current;
+        if (m) {
+          e.preventDefault();
+          useAppStore.getState().selectAll(m.page_count);
+        }
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -183,6 +239,13 @@ function App() {
     const unlistenReportBug = listen<void>("menu-report-bug", () => {
       setBugReportOpen(true);
     });
+    const unlistenSave    = listen<void>("menu-save",    () => handleSave());
+    const unlistenSaveAs  = listen<void>("menu-save-as", () => handleSaveAs());
+    const unlistenUndo    = listen<void>("menu-undo",    () => handleUndo());
+    const unlistenRedo    = listen<void>("menu-redo",    () => handleRedo());
+    const unlistenPrint   = listen<void>("menu-print",   () => {
+      toast.error("Print is not yet implemented.", { id: "pdf-error", duration: 4000 });
+    });
     return () => {
       unlistenOpen.then((fn) => fn());
       unlistenClose.then((fn) => fn());
@@ -199,6 +262,11 @@ function App() {
       unlistenImport.then((fn) => fn());
       unlistenDisplay.then((fn) => fn());
       unlistenReportBug.then((fn) => fn());
+      unlistenSave.then((fn) => fn());
+      unlistenSaveAs.then((fn) => fn());
+      unlistenUndo.then((fn) => fn());
+      unlistenRedo.then((fn) => fn());
+      unlistenPrint.then((fn) => fn());
     };
     // handleOpen is defined in render scope but only reads stable refs/setState.
     // Omitting from deps avoids re-registering listeners on every render.
@@ -225,7 +293,16 @@ function App() {
       )}
 
       <SidebarInset className="flex flex-col overflow-hidden">
-        <Toolbar onOpen={handleOpen} loading={loading} hasDocument={manifest !== null} />
+        <Toolbar
+          onOpen={handleOpen}
+          loading={loading}
+          hasDocument={manifest !== null}
+          canUndo={manifest?.can_undo ?? false}
+          canRedo={manifest?.can_redo ?? false}
+          onSave={handleSave}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+        />
 
         <Separator />
 
@@ -243,6 +320,8 @@ function App() {
 
         <StatusBar pageCount={manifest?.page_count} />
       </SidebarInset>
+
+      <ShortcutOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
 
       <BugReportDialog
         open={bugReportOpen}

@@ -9,9 +9,10 @@ beforeEach(() => {
 });
 
 describe("StatusBar", () => {
-  it("renders nothing when no document is open", () => {
+  it("renders an empty footer when no document is open", () => {
     const { container } = render(<StatusBar pageCount={undefined} />);
-    expect(container).toBeEmptyDOMElement();
+    expect(container.querySelector("footer")).toBeInTheDocument();
+    expect(screen.queryByText(/Page/)).not.toBeInTheDocument();
   });
 
   it("shows page 1 of N when activePage is 0", () => {
@@ -29,5 +30,17 @@ describe("StatusBar", () => {
     useAppStore.setState({ zoom: 150 });
     render(<StatusBar pageCount={1} />);
     expect(screen.getByText("150%")).toBeInTheDocument();
+  });
+
+  it("shows dirty indicator when isDirty is true", () => {
+    useAppStore.setState({ isDirty: true });
+    render(<StatusBar pageCount={5} />);
+    expect(screen.getByText("•")).toBeInTheDocument();
+  });
+
+  it("hides dirty indicator when isDirty is false", () => {
+    useAppStore.setState({ isDirty: false });
+    render(<StatusBar pageCount={5} />);
+    expect(screen.queryByText("•")).not.toBeInTheDocument();
   });
 });

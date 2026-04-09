@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   SidebarContent,
@@ -34,6 +34,28 @@ const THUMBNAIL_GAP = 16;
 export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [thumbnailWidth, setThumbnailWidth] = useState(120);
+
+  // Range-select anchor — tracked in a ref to avoid re-renders.
+  const anchorRef = useRef(0);
+
+  const selectedPages = useAppStore((s) => s.selectedPages);
+  const togglePageSelection = useAppStore((s) => s.togglePageSelection);
+  const selectPageRange = useAppStore((s) => s.selectPageRange);
+
+  const handleThumbClick = useCallback(
+    (index: number, e: React.MouseEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        togglePageSelection(index);
+        anchorRef.current = index;
+      } else if (e.shiftKey) {
+        selectPageRange(anchorRef.current, index);
+      } else {
+        onScrollToPage(index);
+        anchorRef.current = index;
+      }
+    },
+    [togglePageSelection, selectPageRange, onScrollToPage]
+  );
 
   // Measure available content width and update thumbnails when it changes.
   useEffect(() => {
@@ -104,7 +126,8 @@ export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
                     widthPts={width_pts}
                     heightPts={height_pts}
                     isActive={item.index === activePage}
-                    onClick={() => onScrollToPage(item.index)}
+                    isSelected={selectedPages.has(item.index)}
+                    onClick={(e) => handleThumbClick(item.index, e)}
                   />
                 </div>
               );

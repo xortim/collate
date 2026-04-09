@@ -5,6 +5,7 @@ import {
   Moon,
   Printer,
   Redo2,
+  Save,
   Search,
   Sun,
   Undo2,
@@ -12,6 +13,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
@@ -28,6 +30,11 @@ interface ToolbarProps {
   onOpen(): void;
   loading: boolean;
   hasDocument: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  onSave(): void;
+  onUndo(): void;
+  onRedo(): void;
 }
 
 const THEME_CYCLE: Theme[] = ["system", "light", "dark"];
@@ -44,7 +51,7 @@ const THEME_LABEL: Record<Theme, string> = {
   dark: "Theme: Dark",
 };
 
-export function Toolbar({ onOpen, loading, hasDocument }: ToolbarProps) {
+export function Toolbar({ onOpen, loading, hasDocument, canUndo, canRedo, onSave, onUndo, onRedo }: ToolbarProps) {
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const zoom = useAppStore((s) => s.zoom);
@@ -75,109 +82,120 @@ export function Toolbar({ onOpen, loading, hasDocument }: ToolbarProps) {
 
   return (
     <TooltipProvider delayDuration={600}>
-      <header className="flex items-center gap-1 px-2 h-11 shrink-0">
+      <header className="flex items-center gap-2 px-2 h-11 shrink-0">
         <SidebarTrigger />
-        <div aria-hidden className="w-px h-5 bg-border mx-1 shrink-0" />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="sm" variant="ghost" onClick={onOpen} disabled={loading} className="gap-1.5">
-              <FolderOpen className="size-4" />
-              {loading ? "Opening…" : "Open"}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Open PDF ({modKey()}O)</TooltipContent>
-        </Tooltip>
+        <ButtonGroup>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="sm" variant="outline" onClick={onOpen} disabled={loading} className="gap-1.5">
+                <FolderOpen className="size-4" />
+                {loading ? "Opening…" : "Open"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Open PDF ({modKey()}O)</TooltipContent>
+          </Tooltip>
 
-        <div aria-hidden className="w-px h-5 bg-border mx-1 shrink-0" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="outline" onClick={onSave} disabled={!hasDocument} aria-label="Save">
+                <Save className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Save ({modKey()}S)</TooltipContent>
+          </Tooltip>
+        </ButtonGroup>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-8" disabled aria-label="Undo">
-              <Undo2 className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Undo ({modKey()}Z) — coming soon</TooltipContent>
-        </Tooltip>
+        <ButtonGroup>
+          <ButtonGroup>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="icon" variant="outline" onClick={onUndo} disabled={!canUndo} aria-label="Undo">
+                  <Undo2 className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Undo ({modKey()}Z)</TooltipContent>
+            </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-8" disabled aria-label="Redo">
-              <Redo2 className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Redo ({shiftModKey()}Z) — coming soon</TooltipContent>
-        </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="icon" variant="outline" onClick={onRedo} disabled={!canRedo} aria-label="Redo">
+                  <Redo2 className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Redo ({shiftModKey()}Z)</TooltipContent>
+            </Tooltip>
+          </ButtonGroup>
 
-        <div aria-hidden className="w-px h-5 bg-border mx-1 shrink-0" />
+          <ButtonGroup>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={zoomOut}
+                  disabled={!hasDocument || (zoom <= ZOOM_STEPS[0] && zoomMode === "manual")}
+                  aria-label="Zoom out"
+                >
+                  <ZoomOut className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Zoom Out ({modKey()}−)</TooltipContent>
+            </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-8"
-              onClick={zoomOut}
-              disabled={!hasDocument || (zoom <= ZOOM_STEPS[0] && zoomMode === "manual")}
-              aria-label="Zoom out"
-            >
-              <ZoomOut className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Zoom Out ({modKey()}−)</TooltipContent>
-        </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={zoomIn}
+                  disabled={!hasDocument || (zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1] && zoomMode === "manual")}
+                  aria-label="Zoom in"
+                >
+                  <ZoomIn className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Zoom In ({modKey()}+)</TooltipContent>
+            </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-8"
-              onClick={zoomIn}
-              disabled={!hasDocument || (zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1] && zoomMode === "manual")}
-              aria-label="Zoom in"
-            >
-              <ZoomIn className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Zoom In ({modKey()}+)</TooltipContent>
-        </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant={zoomMode === "fit-width" ? "secondary" : "outline"}
+                  onClick={fitWidth}
+                  disabled={!hasDocument}
+                  aria-label="Fit width"
+                >
+                  <Maximize2 className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Fit Width ({modKey()}0)</TooltipContent>
+            </Tooltip>
+          </ButtonGroup>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon"
-              variant={zoomMode === "fit-width" ? "secondary" : "ghost"}
-              className="size-8"
-              onClick={fitWidth}
-              disabled={!hasDocument}
-              aria-label="Fit width"
-            >
-              <Maximize2 className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Fit Width ({modKey()}0)</TooltipContent>
-        </Tooltip>
+          <ButtonGroup>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="icon" variant="outline" disabled aria-label="Find">
+                  <Search className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Find ({modKey()}F) — coming soon</TooltipContent>
+            </Tooltip>
+          </ButtonGroup>
 
-        <div aria-hidden className="w-px h-5 bg-border mx-1 shrink-0" />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-8" disabled aria-label="Find">
-              <Search className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Find ({modKey()}F) — coming soon</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-8" disabled aria-label="Print">
-              <Printer className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Print ({modKey()}P) — coming in P1.6</TooltipContent>
-        </Tooltip>
+          <ButtonGroup>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="icon" variant="outline" disabled aria-label="Print">
+                  <Printer className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Print ({modKey()}P) — coming in P1.6</TooltipContent>
+            </Tooltip>
+          </ButtonGroup>
+        </ButtonGroup>
 
         <div className="flex-1" />
 
@@ -186,7 +204,6 @@ export function Toolbar({ onOpen, loading, hasDocument }: ToolbarProps) {
             <Button
               size="icon"
               variant="ghost"
-              className="size-8"
               onClick={cycleTheme}
               aria-label={THEME_LABEL[theme]}
             >

@@ -18,6 +18,13 @@ interface AppStore {
   setZoomMode(mode: ZoomMode): void;
   pageDisplay: PageDisplay;
   setPageDisplay(mode: PageDisplay): void;
+  isDirty: boolean;
+  setIsDirty(dirty: boolean): void;
+  selectedPages: ReadonlySet<number>;
+  togglePageSelection(index: number): void;
+  selectPageRange(from: number, to: number): void;
+  clearSelection(): void;
+  selectAll(count: number): void;
 }
 
 export const ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200, 300, 400];
@@ -37,6 +44,29 @@ export const useAppStore = create<AppStore>()(
       setZoomMode: (zoomMode) => set({ zoomMode }),
       pageDisplay: "continuous",
       setPageDisplay: (pageDisplay) => set({ pageDisplay }),
+      isDirty: false,
+      setIsDirty: (dirty) => set({ isDirty: dirty }),
+      selectedPages: new Set<number>(),
+      togglePageSelection: (index) =>
+        set((s) => {
+          const next = new Set(s.selectedPages);
+          if (next.has(index)) next.delete(index);
+          else next.add(index);
+          return { selectedPages: next };
+        }),
+      selectPageRange: (from, to) => {
+        const lo = Math.min(from, to);
+        const hi = Math.max(from, to);
+        const next = new Set<number>();
+        for (let i = lo; i <= hi; i++) next.add(i);
+        set({ selectedPages: next });
+      },
+      clearSelection: () => set({ selectedPages: new Set<number>() }),
+      selectAll: (count) => {
+        const next = new Set<number>();
+        for (let i = 0; i < count; i++) next.add(i);
+        set({ selectedPages: next });
+      },
     }),
     {
       name: "collate-settings",

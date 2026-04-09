@@ -6,10 +6,28 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { useAppStore } from "@/store";
 
 // SidebarTrigger inside Toolbar requires the context from SidebarProvider
-function renderToolbar(props: { onOpen: () => void; loading: boolean; hasDocument?: boolean }) {
+function renderToolbar(props: {
+  onOpen?: () => void;
+  loading?: boolean;
+  hasDocument?: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onSave?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+}) {
   return render(
     <SidebarProvider>
-      <Toolbar {...props} hasDocument={props.hasDocument ?? false} />
+      <Toolbar
+        onOpen={props.onOpen ?? vi.fn()}
+        loading={props.loading ?? false}
+        hasDocument={props.hasDocument ?? false}
+        canUndo={props.canUndo ?? false}
+        canRedo={props.canRedo ?? false}
+        onSave={props.onSave ?? vi.fn()}
+        onUndo={props.onUndo ?? vi.fn()}
+        onRedo={props.onRedo ?? vi.fn()}
+      />
     </SidebarProvider>
   );
 }
@@ -20,33 +38,86 @@ beforeEach(() => {
 
 describe("Toolbar", () => {
   it("renders Open button", () => {
-    renderToolbar({ onOpen: vi.fn(), loading: false });
+    renderToolbar({});
     expect(screen.getByRole("button", { name: /open/i })).toBeInTheDocument();
   });
 
   it("calls onOpen when Open is clicked", async () => {
     const onOpen = vi.fn();
-    renderToolbar({ onOpen, loading: false });
+    renderToolbar({ onOpen });
     await userEvent.click(screen.getByRole("button", { name: /open/i }));
     expect(onOpen).toHaveBeenCalledOnce();
   });
 
   it("disables Open button while loading", () => {
-    renderToolbar({ onOpen: vi.fn(), loading: true });
+    renderToolbar({ loading: true });
     expect(screen.getByRole("button", { name: /opening/i })).toBeDisabled();
   });
 
-  it("stub buttons (undo, redo, find, print) are disabled", () => {
-    renderToolbar({ onOpen: vi.fn(), loading: false });
-    expect(screen.getByRole("button", { name: /undo/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /redo/i })).toBeDisabled();
+  it("stub buttons (find, print) are disabled", () => {
+    renderToolbar({});
     expect(screen.getByRole("button", { name: /find/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /print/i })).toBeDisabled();
   });
 
+  describe("Save button", () => {
+    it("is disabled when no document is open", () => {
+      renderToolbar({ hasDocument: false });
+      expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
+    });
+
+    it("is enabled when a document is open", () => {
+      renderToolbar({ hasDocument: true });
+      expect(screen.getByRole("button", { name: /save/i })).not.toBeDisabled();
+    });
+
+    it("calls onSave when clicked", async () => {
+      const onSave = vi.fn();
+      renderToolbar({ hasDocument: true, onSave });
+      await userEvent.click(screen.getByRole("button", { name: /save/i }));
+      expect(onSave).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("Undo / Redo buttons", () => {
+    it("undo is disabled when canUndo is false", () => {
+      renderToolbar({ canUndo: false });
+      expect(screen.getByRole("button", { name: /undo/i })).toBeDisabled();
+    });
+
+    it("undo is enabled when canUndo is true", () => {
+      renderToolbar({ canUndo: true });
+      expect(screen.getByRole("button", { name: /undo/i })).not.toBeDisabled();
+    });
+
+    it("calls onUndo when undo is clicked", async () => {
+      const onUndo = vi.fn();
+      renderToolbar({ canUndo: true, onUndo });
+      await userEvent.click(screen.getByRole("button", { name: /undo/i }));
+      expect(onUndo).toHaveBeenCalledOnce();
+    });
+
+    it("redo is disabled when canRedo is false", () => {
+      renderToolbar({ canRedo: false });
+      expect(screen.getByRole("button", { name: /redo/i })).toBeDisabled();
+    });
+
+    it("redo is enabled when canRedo is true", () => {
+      renderToolbar({ canRedo: true });
+      expect(screen.getByRole("button", { name: /redo/i })).not.toBeDisabled();
+    });
+
+    it("calls onRedo when redo is clicked", async () => {
+      const onRedo = vi.fn();
+      renderToolbar({ canRedo: true, onRedo });
+      await userEvent.click(screen.getByRole("button", { name: /redo/i }));
+      expect(onRedo).toHaveBeenCalledOnce();
+    });
+  });
+
   it("zoom buttons are enabled and functional", async () => {
     useAppStore.setState({ zoom: 75, zoomMode: "manual" });
-    renderToolbar({ onOpen: vi.fn(), loading: false, hasDocument: true });
+    renderToolbar({ hasDocument: true });
     expect(screen.getByRole("button", { name: /zoom out/i })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: /zoom in/i })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: /fit width/i })).not.toBeDisabled();
@@ -62,7 +133,7 @@ describe("Toolbar", () => {
   describe("document-dependent disabled state", () => {
     it("disables zoom controls when no document is open", () => {
       useAppStore.setState({ zoom: 75, zoomMode: "manual" });
-      renderToolbar({ onOpen: vi.fn(), loading: false, hasDocument: false });
+      renderToolbar({ hasDocument: false });
       expect(screen.getByRole("button", { name: /zoom out/i })).toBeDisabled();
       expect(screen.getByRole("button", { name: /zoom in/i })).toBeDisabled();
       expect(screen.getByRole("button", { name: /fit width/i })).toBeDisabled();
@@ -70,7 +141,7 @@ describe("Toolbar", () => {
 
     it("enables zoom controls when a document is open", () => {
       useAppStore.setState({ zoom: 75, zoomMode: "manual" });
-      renderToolbar({ onOpen: vi.fn(), loading: false, hasDocument: true });
+      renderToolbar({ hasDocument: true });
       expect(screen.getByRole("button", { name: /zoom out/i })).not.toBeDisabled();
       expect(screen.getByRole("button", { name: /zoom in/i })).not.toBeDisabled();
       expect(screen.getByRole("button", { name: /fit width/i })).not.toBeDisabled();
@@ -79,7 +150,7 @@ describe("Toolbar", () => {
 
   it("cycles theme on toggle button click", async () => {
     useAppStore.setState({ theme: "system" });
-    renderToolbar({ onOpen: vi.fn(), loading: false });
+    renderToolbar({});
 
     const toggle = screen.getByRole("button", { name: /theme/i });
     await userEvent.click(toggle);

@@ -24,7 +24,7 @@ export function EmptyState({ onOpen }: EmptyStateProps) {
           </EmptyMedia>
           <EmptyTitle>No document open</EmptyTitle>
           <EmptyDescription>
-            File → Open… or {modKey()}O
+            File → Open… or <kbd className="font-mono text-xs bg-muted px-1 py-0.5 rounded border">{modKey()}O</kbd>
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>

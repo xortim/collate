@@ -50,19 +50,27 @@ struct AppState {
 // ---------------------------------------------------------------------------
 
 /// Physical page dimensions in PDF points (1 pt = 1/72 inch).
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct PageSize {
     width_pts: f64,
     height_pts: f64,
 }
 
-/// Returned by `open_document`.
-#[derive(Serialize)]
+/// Returned by `open_document` and all mutation commands.
+#[derive(Serialize, Clone)]
 struct DocumentManifest {
     doc_id: u32,
     page_count: usize,
     filename: String,
+    /// Full filesystem path — used by the frontend for Save (no dialog needed).
+    path: String,
     page_sizes: Vec<PageSize>,
+    /// Whether an undo step is available. Always false until the command stack
+    /// is implemented in Phase 3.
+    can_undo: bool,
+    /// Whether a redo step is available. Always false until the command stack
+    /// is implemented in Phase 3.
+    can_redo: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +150,10 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
         doc_id,
         page_count,
         filename,
+        path,
         page_sizes,
+        can_undo: false,
+        can_redo: false,
     })
 }
 
@@ -152,6 +163,74 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
 fn close_document(doc_id: u32, state: State<AppState>) -> Result<(), String> {
     state.documents.lock().unwrap().remove(&doc_id);
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Mutation stubs — real implementations land in Phase 3 (mutations).
+// Each validates the doc_id and returns Err until the body is filled in.
+// The frontend wires up to these now so plumbing is validated end-to-end.
+// ---------------------------------------------------------------------------
+
+/// Persist the document to `path`.
+/// TODO(mutations): write bytes via lopdf once mutation infrastructure exists.
+#[tauri::command]
+fn save_document(doc_id: u32, path: String, state: State<AppState>) -> Result<(), String> {
+    if !state.documents.lock().unwrap().contains_key(&doc_id) {
+        return Err(format!("document {doc_id} not found"));
+    }
+    let _ = path; // will be used by the real implementation
+    Err("save_document: not yet implemented".to_string()) // TODO(mutations)
+}
+
+/// Undo the last mutation and return the updated manifest.
+/// TODO(mutations): pop from the per-document command stack.
+#[tauri::command]
+fn undo_document(doc_id: u32, state: State<AppState>) -> Result<DocumentManifest, String> {
+    if !state.documents.lock().unwrap().contains_key(&doc_id) {
+        return Err(format!("document {doc_id} not found"));
+    }
+    Err("undo_document: not yet implemented".to_string()) // TODO(mutations)
+}
+
+/// Redo the last undone mutation and return the updated manifest.
+/// TODO(mutations): push back onto the per-document command stack.
+#[tauri::command]
+fn redo_document(doc_id: u32, state: State<AppState>) -> Result<DocumentManifest, String> {
+    if !state.documents.lock().unwrap().contains_key(&doc_id) {
+        return Err(format!("document {doc_id} not found"));
+    }
+    Err("redo_document: not yet implemented".to_string()) // TODO(mutations)
+}
+
+/// Rotate `page_indices` by `degrees` (90 or -90) and return the updated manifest.
+/// TODO(mutations): apply rotation via lopdf page dictionary.
+#[tauri::command]
+fn rotate_pages(
+    doc_id: u32,
+    page_indices: Vec<usize>,
+    degrees: i32,
+    state: State<AppState>,
+) -> Result<DocumentManifest, String> {
+    if !state.documents.lock().unwrap().contains_key(&doc_id) {
+        return Err(format!("document {doc_id} not found"));
+    }
+    let _ = (page_indices, degrees);
+    Err("rotate_pages: not yet implemented".to_string()) // TODO(mutations)
+}
+
+/// Delete `page_indices` and return the updated manifest.
+/// TODO(mutations): remove pages via lopdf and rebuild page tree.
+#[tauri::command]
+fn delete_pages(
+    doc_id: u32,
+    page_indices: Vec<usize>,
+    state: State<AppState>,
+) -> Result<DocumentManifest, String> {
+    if !state.documents.lock().unwrap().contains_key(&doc_id) {
+        return Err(format!("document {doc_id} not found"));
+    }
+    let _ = page_indices;
+    Err("delete_pages: not yet implemented".to_string()) // TODO(mutations)
 }
 
 /// Called by the frontend to keep the native menu checkmarks in sync with the
@@ -205,6 +284,7 @@ fn set_theme_checks(app: &tauri::AppHandle, selected: &str) {
 
 const PDF_MENU_IDS: &[&str] = &[
     "close", "print", "undo", "redo", "find",
+    "save", "save-as",
     "zoom-in", "zoom-out", "zoom-fit-width",
     // Document menu
     "rotate-cw", "rotate-cw-all", "rotate-ccw", "rotate-ccw-all",
@@ -301,11 +381,13 @@ pub fn run() {
         .menu(menu::build_menu)
         .on_menu_event(|app, event| {
             match event.id().as_ref() {
-                "open"  => { let _ = app.emit("menu-open",  ()); }
-                "close" => { let _ = app.emit("menu-close", ()); }
-                "print" => { let _ = app.emit("menu-print", ()); }
-                "undo"  => { let _ = app.emit("menu-undo",  ()); }
-                "redo"  => { let _ = app.emit("menu-redo",  ()); }
+                "open"    => { let _ = app.emit("menu-open",    ()); }
+                "save"    => { let _ = app.emit("menu-save",    ()); }
+                "save-as" => { let _ = app.emit("menu-save-as", ()); }
+                "close"   => { let _ = app.emit("menu-close",   ()); }
+                "print"   => { let _ = app.emit("menu-print",   ()); }
+                "undo"    => { let _ = app.emit("menu-undo",    ()); }
+                "redo"    => { let _ = app.emit("menu-redo",    ()); }
                 "find"  => { let _ = app.emit("menu-find",  ()); }
                 // Document menu — stubs forwarded to frontend for future implementation
                 "rotate-cw"      => { let _ = app.emit("menu-rotate-cw",      ()); }
@@ -411,6 +493,11 @@ pub fn run() {
             close_document,
             set_menu_theme,
             set_pdf_menus_enabled,
+            save_document,
+            undo_document,
+            redo_document,
+            rotate_pages,
+            delete_pages,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
