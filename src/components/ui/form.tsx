@@ -4,7 +4,6 @@ import {
   Controller,
   FormProvider,
   useFormContext,
-  useFormState,
   type ControllerProps,
   type FieldPath,
   type FieldValues,
@@ -128,18 +127,20 @@ function FormMessage({
   ...props
 }: React.ComponentProps<"p">) {
   const { error, formMessageId } = useFormField()
-  const { isSubmitted } = useFormState()
   const body = error?.message
 
-  // Only show inline errors after the user has touched the field
-  // (react-hook-form sets error.type; message appears on blur/submit).
-  if (!body) return null
-
+  // Always render so the reserved height prevents layout shift.
+  // Text colour is only applied when there is an actual error.
   return (
     <p
       data-slot="form-message"
       id={formMessageId}
-      className={cn("text-destructive text-sm", className)}
+      aria-live="polite"
+      className={cn(
+        "min-h-5 text-sm",
+        body ? "text-destructive" : "select-none",
+        className
+      )}
       {...props}
     >
       {body}

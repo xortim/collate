@@ -81,7 +81,7 @@ export function BugReportDialog({ open, onOpenChange }: Props) {
                       {...field}
                     />
                   </FormControl>
-                  <FormMessage className="min-h-5" />
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -95,14 +95,14 @@ export function BugReportDialog({ open, onOpenChange }: Props) {
                   <FormControl>
                     <Textarea
                       placeholder="Your report…"
-                      rows={8}
+                      rows={10}
                       {...field}
                     />
                   </FormControl>
                   <FormDescription>
                     Include steps to reproduce, expected behavior, and what actually happened.
                   </FormDescription>
-                  <FormMessage className="min-h-5" />
+                  <FormMessage />
                 </FormItem>
               )}
             />
