@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -49,8 +50,11 @@ export function BugReportDialog({ open, onOpenChange, prefill }: Props) {
     }
   }, [open, prefill]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleSubmit(_values: FormValues) {
-    // TODO: wire up to a real reporting backend when available
+  async function handleSubmit(values: FormValues) {
+    const url =
+      "https://github.com/xortim/collate/issues/new?" +
+      new URLSearchParams({ title: values.title, body: values.description }).toString();
+    await openUrl(url);
     form.reset();
     onOpenChange(false);
   }

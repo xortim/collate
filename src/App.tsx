@@ -83,7 +83,15 @@ function App() {
       await invoke("save_document", { docId: m.doc_id, path: savePath });
       useAppStore.getState().setIsDirty(false);
     } catch (e) {
-      toast.error(String(e), { id: "pdf-error", duration: 6000 });
+      const message = String(e);
+      toast.error(message, {
+        id: "pdf-error",
+        duration: 6000,
+        action: {
+          label: <BugIcon className="size-4" />,
+          onClick: () => openBugReportForError(message),
+        },
+      });
     }
   }
 
@@ -99,7 +107,15 @@ function App() {
       const next = await invoke<DocumentManifest>("undo_document", { docId: m.doc_id });
       setManifest(next);
     } catch (e) {
-      toast.error(String(e), { id: "pdf-error", duration: 6000 });
+      const message = String(e);
+      toast.error(message, {
+        id: "pdf-error",
+        duration: 6000,
+        action: {
+          label: <BugIcon className="size-4" />,
+          onClick: () => openBugReportForError(message),
+        },
+      });
     }
   }
 
@@ -110,7 +126,15 @@ function App() {
       const next = await invoke<DocumentManifest>("redo_document", { docId: m.doc_id });
       setManifest(next);
     } catch (e) {
-      toast.error(String(e), { id: "pdf-error", duration: 6000 });
+      const message = String(e);
+      toast.error(message, {
+        id: "pdf-error",
+        duration: 6000,
+        action: {
+          label: <BugIcon className="size-4" />,
+          onClick: () => openBugReportForError(message),
+        },
+      });
     }
   }
 
@@ -241,8 +265,12 @@ function App() {
     });
     const unlistenSave    = listen<void>("menu-save",    () => handleSave());
     const unlistenSaveAs  = listen<void>("menu-save-as", () => handleSaveAs());
-    const unlistenUndo    = listen<void>("menu-undo",    () => handleUndo());
-    const unlistenRedo    = listen<void>("menu-redo",    () => handleRedo());
+    const unlistenUndo      = listen<void>("menu-undo",       () => handleUndo());
+    const unlistenRedo      = listen<void>("menu-redo",       () => handleRedo());
+    const unlistenSelectAll = listen<void>("menu-select-all", () => {
+      const m = manifestRef.current;
+      if (m) useAppStore.getState().selectAll(m.page_count);
+    });
     const unlistenPrint   = listen<void>("menu-print",   () => {
       toast.error("Print is not yet implemented.", { id: "pdf-error", duration: 4000 });
     });
@@ -266,6 +294,7 @@ function App() {
       unlistenSaveAs.then((fn) => fn());
       unlistenUndo.then((fn) => fn());
       unlistenRedo.then((fn) => fn());
+      unlistenSelectAll.then((fn) => fn());
       unlistenPrint.then((fn) => fn());
     };
     // handleOpen is defined in render scope but only reads stable refs/setState.
@@ -288,6 +317,7 @@ function App() {
             docId={manifest.doc_id}
             pageSizes={manifest.page_sizes}
             onScrollToPage={(i) => viewerRef.current?.scrollToPage(i)}
+            onBugReport={openBugReportForError}
           />
         </Sidebar>
       )}

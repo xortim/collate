@@ -1,9 +1,10 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import App from "./App";
 import { useAppStore } from "@/store";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 
@@ -116,5 +117,50 @@ describe("App", () => {
     fireEvent.keyDown(window, { key: "=", ctrlKey: true });
 
     expect(useAppStore.getState().zoom).toBe(100);
+  });
+});
+
+describe("Edit > Select All menu event", () => {
+  let menuHandlers: Record<string, () => void>;
+
+  beforeEach(() => {
+    menuHandlers = {};
+    useAppStore.getState().clearSelection();
+    (listen as Mock).mockImplementation((event: string, cb: () => void) => {
+      menuHandlers[event] = cb;
+      return Promise.resolve(vi.fn());
+    });
+  });
+
+  it("selects all pages when menu-select-all fires with a document open", async () => {
+    (openDialog as Mock).mockResolvedValue("/path/to/test.pdf");
+    (invoke as Mock).mockImplementation((cmd: string) => {
+      if (cmd === "open_document") return Promise.resolve(MOCK_MANIFEST);
+      return Promise.resolve(undefined);
+    });
+
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: /^open$/i }));
+    await waitFor(() => screen.getByText(/page 1 of 3/i));
+
+    await act(async () => {
+      menuHandlers["menu-select-all"]?.();
+    });
+
+    const { selectedPages } = useAppStore.getState();
+    expect(selectedPages.size).toBe(MOCK_MANIFEST.page_count);
+    for (let i = 0; i < MOCK_MANIFEST.page_count; i++) {
+      expect(selectedPages.has(i)).toBe(true);
+    }
+  });
+
+  it("does nothing when menu-select-all fires with no document open", async () => {
+    render(<App />);
+
+    await act(async () => {
+      menuHandlers["menu-select-all"]?.();
+    });
+
+    expect(useAppStore.getState().selectedPages.size).toBe(0);
   });
 });

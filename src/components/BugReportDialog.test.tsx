@@ -1,7 +1,12 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { BugReportDialog } from "./BugReportDialog";
+
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe("BugReportDialog", () => {
   it("renders nothing when closed", () => {
@@ -143,5 +148,17 @@ describe("BugReportDialog", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /submit/i }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("opens browser with prefilled GitHub issue URL on submit", async () => {
+    render(<BugReportDialog open={true} onOpenChange={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText(/bug title/i), "This is a valid title");
+    await userEvent.type(screen.getByLabelText(/description/i), "This description is long enough to pass");
+    await userEvent.click(screen.getByRole("button", { name: /submit/i }));
+    expect(openUrl).toHaveBeenCalledWith(
+      expect.stringContaining("https://github.com/xortim/collate/issues/new?")
+    );
+    expect(openUrl).toHaveBeenCalledWith(expect.stringContaining("title="));
+    expect(openUrl).toHaveBeenCalledWith(expect.stringContaining("body="));
   });
 });

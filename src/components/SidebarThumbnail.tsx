@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { BugIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ContextMenu,
@@ -22,6 +23,7 @@ interface Props {
   isActive: boolean;
   isSelected: boolean;
   onClick(e: React.MouseEvent): void;
+  onBugReport(message: string): void;
 }
 
 /** Debounces a value by `delay` ms. The initial value is returned immediately. */
@@ -56,6 +58,7 @@ export function SidebarThumbnail({
   isActive,
   isSelected,
   onClick,
+  onBugReport,
 }: Props) {
   const selectedPages = useAppStore((s) => s.selectedPages);
 
@@ -83,7 +86,15 @@ export function SidebarThumbnail({
     try {
       await invoke(command, { docId, pageIndices: indices, ...extraArgs });
     } catch (e) {
-      toast.error(String(e), { id: "pdf-error", duration: 6000 });
+      const message = String(e);
+      toast.error(message, {
+        id: "pdf-error",
+        duration: 6000,
+        action: {
+          label: <BugIcon className="size-4" />,
+          onClick: () => onBugReport(message),
+        },
+      });
     }
   }
 

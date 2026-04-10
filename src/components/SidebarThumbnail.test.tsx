@@ -36,6 +36,7 @@ function renderThumbnail(overrides: Partial<Parameters<typeof SidebarThumbnail>[
       isActive={false}
       isSelected={false}
       onClick={vi.fn()}
+      onBugReport={vi.fn()}
       {...overrides}
     />
   );
@@ -126,5 +127,20 @@ describe("SidebarThumbnail context menu", () => {
     });
     // invoke rejects → toast.error should have been called
     await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
+  });
+
+  it("error toast includes a bug report action button", async () => {
+    const { toast } = await import("sonner");
+    const onBugReport = vi.fn();
+    renderThumbnail({ onBugReport });
+    const thumb = screen.getByRole("button", { name: /go to page 1/i });
+    await userEvent.pointer({ target: thumb, keys: "[MouseRight]" });
+    await userEvent.click(screen.getByRole("menuitem", { name: /rotate clockwise/i }));
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const opts = (toast.error as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[1];
+    expect(opts).toHaveProperty("action");
+    // clicking the action should call onBugReport with the error message
+    opts.action.onClick();
+    expect(onBugReport).toHaveBeenCalledWith("rotate_pages: not yet implemented");
   });
 });

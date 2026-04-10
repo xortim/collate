@@ -17,6 +17,7 @@ interface Props {
   docId: number;
   pageSizes: PageSize[];
   onScrollToPage(index: number): void;
+  onBugReport(message: string): void;
 }
 
 /** Gap between thumbnails in pixels. */
@@ -31,7 +32,7 @@ const THUMBNAIL_GAP = 16;
  * width — including after the user resizes the window. The same ref drives
  * both the observer and the virtualizer's scroll container.
  */
-export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
+export function PageSidebar({ docId, pageSizes, onScrollToPage, onBugReport }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [thumbnailWidth, setThumbnailWidth] = useState(120);
 
@@ -130,6 +131,7 @@ export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
                     isActive={item.index === activePage}
                     isSelected={selectedPages.has(item.index)}
                     onClick={(e) => handleThumbClick(item.index, e)}
+                    onBugReport={onBugReport}
                   />
                 </div>
               );

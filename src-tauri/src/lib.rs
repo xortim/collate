@@ -283,7 +283,7 @@ fn set_theme_checks(app: &tauri::AppHandle, selected: &str) {
 // ---------------------------------------------------------------------------
 
 const PDF_MENU_IDS: &[&str] = &[
-    "close", "print", "undo", "redo", "find",
+    "close", "print", "undo", "redo", "select-all", "find",
     "save", "save-as",
     "zoom-in", "zoom-out", "zoom-fit-width",
     // Document menu
@@ -386,9 +386,10 @@ pub fn run() {
                 "save-as" => { let _ = app.emit("menu-save-as", ()); }
                 "close"   => { let _ = app.emit("menu-close",   ()); }
                 "print"   => { let _ = app.emit("menu-print",   ()); }
-                "undo"    => { let _ = app.emit("menu-undo",    ()); }
-                "redo"    => { let _ = app.emit("menu-redo",    ()); }
-                "find"  => { let _ = app.emit("menu-find",  ()); }
+                "undo"       => { let _ = app.emit("menu-undo",       ()); }
+                "redo"       => { let _ = app.emit("menu-redo",       ()); }
+                "select-all" => { let _ = app.emit("menu-select-all", ()); }
+                "find"       => { let _ = app.emit("menu-find",       ()); }
                 // Document menu — stubs forwarded to frontend for future implementation
                 "rotate-cw"      => { let _ = app.emit("menu-rotate-cw",      ()); }
                 "rotate-cw-all"  => { let _ = app.emit("menu-rotate-cw-all",  ()); }
