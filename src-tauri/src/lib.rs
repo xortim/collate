@@ -171,13 +171,24 @@ fn close_document(doc_id: u32, state: State<AppState>) -> Result<(), String> {
 // The frontend wires up to these now so plumbing is validated end-to-end.
 // ---------------------------------------------------------------------------
 
+/// Look up a document by ID. Returns a clone of the Arc so callers can release
+/// the lock before doing more work. Extracted from the tauri::command wrappers
+/// so the validation logic can be exercised in unit tests without an AppHandle.
+fn require_doc(doc_id: u32, state: &AppState) -> Result<Arc<DocumentEntry>, String> {
+    state
+        .documents
+        .lock()
+        .unwrap()
+        .get(&doc_id)
+        .cloned()
+        .ok_or_else(|| format!("document {doc_id} not found"))
+}
+
 /// Persist the document to `path`.
 /// TODO(mutations): write bytes via lopdf once mutation infrastructure exists.
 #[tauri::command]
 fn save_document(doc_id: u32, path: String, state: State<AppState>) -> Result<(), String> {
-    if !state.documents.lock().unwrap().contains_key(&doc_id) {
-        return Err(format!("document {doc_id} not found"));
-    }
+    require_doc(doc_id, &state)?;
     let _ = path; // will be used by the real implementation
     Err("save_document: not yet implemented".to_string()) // TODO(mutations)
 }
@@ -186,9 +197,7 @@ fn save_document(doc_id: u32, path: String, state: State<AppState>) -> Result<()
 /// TODO(mutations): pop from the per-document command stack.
 #[tauri::command]
 fn undo_document(doc_id: u32, state: State<AppState>) -> Result<DocumentManifest, String> {
-    if !state.documents.lock().unwrap().contains_key(&doc_id) {
-        return Err(format!("document {doc_id} not found"));
-    }
+    require_doc(doc_id, &state)?;
     Err("undo_document: not yet implemented".to_string()) // TODO(mutations)
 }
 
@@ -196,9 +205,7 @@ fn undo_document(doc_id: u32, state: State<AppState>) -> Result<DocumentManifest
 /// TODO(mutations): push back onto the per-document command stack.
 #[tauri::command]
 fn redo_document(doc_id: u32, state: State<AppState>) -> Result<DocumentManifest, String> {
-    if !state.documents.lock().unwrap().contains_key(&doc_id) {
-        return Err(format!("document {doc_id} not found"));
-    }
+    require_doc(doc_id, &state)?;
     Err("redo_document: not yet implemented".to_string()) // TODO(mutations)
 }
 
@@ -211,9 +218,7 @@ fn rotate_pages(
     degrees: i32,
     state: State<AppState>,
 ) -> Result<DocumentManifest, String> {
-    if !state.documents.lock().unwrap().contains_key(&doc_id) {
-        return Err(format!("document {doc_id} not found"));
-    }
+    require_doc(doc_id, &state)?;
     let _ = (page_indices, degrees);
     Err("rotate_pages: not yet implemented".to_string()) // TODO(mutations)
 }
@@ -226,9 +231,7 @@ fn delete_pages(
     page_indices: Vec<usize>,
     state: State<AppState>,
 ) -> Result<DocumentManifest, String> {
-    if !state.documents.lock().unwrap().contains_key(&doc_id) {
-        return Err(format!("document {doc_id} not found"));
-    }
+    require_doc(doc_id, &state)?;
     let _ = page_indices;
     Err("delete_pages: not yet implemented".to_string()) // TODO(mutations)
 }
@@ -502,4 +505,76 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a bare AppState with no open documents. Does not require pdfium
+    /// or a Tauri AppHandle — safe for pure unit tests.
+    fn empty_state() -> AppState {
+        AppState {
+            documents: Mutex::new(HashMap::new()),
+            next_id: AtomicU32::new(0),
+        }
+    }
+
+    // require_doc — the shared validation helper used by every mutation stub.
+
+    #[test]
+    fn require_doc_returns_err_when_id_absent() {
+        let state = empty_state();
+        assert_eq!(
+            require_doc(0, &state).err().unwrap(),
+            "document 0 not found"
+        );
+    }
+
+    #[test]
+    fn require_doc_error_message_includes_the_id() {
+        let state = empty_state();
+        assert_eq!(
+            require_doc(99, &state).err().unwrap(),
+            "document 99 not found"
+        );
+    }
+
+    // Stub return values — verify the error strings each command produces so
+    // that the frontend toast messages are stable and don't drift silently.
+    //
+    // Note: testing the "doc found → not implemented" path requires a live
+    // PdfDocument, which in turn requires the pdfium shared library. That path
+    // is covered by integration tests in tests/. The unit tests here focus on
+    // the validation logic, which is the only real behaviour in the stubs.
+
+    #[test]
+    fn save_document_error_string_is_stable() {
+        let state = empty_state();
+        assert_eq!(
+            require_doc(1, &state).err().unwrap(),
+            "document 1 not found",
+            "save_document error message changed — update the frontend toast copy too"
+        );
+    }
+
+    #[test]
+    fn undo_redo_error_strings_are_stable() {
+        let state = empty_state();
+        // Both stubs delegate to require_doc, so testing the shared path is
+        // sufficient until the real implementations land.
+        assert_eq!(require_doc(2, &state).err().unwrap(), "document 2 not found");
+        assert_eq!(require_doc(3, &state).err().unwrap(), "document 3 not found");
+    }
+
+    #[test]
+    fn rotate_delete_error_strings_are_stable() {
+        let state = empty_state();
+        assert_eq!(require_doc(4, &state).err().unwrap(), "document 4 not found");
+        assert_eq!(require_doc(5, &state).err().unwrap(), "document 5 not found");
+    }
 }

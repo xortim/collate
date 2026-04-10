@@ -51,8 +51,6 @@ export function SidebarThumbnail({
   onClick,
   onBugReport,
 }: Props) {
-  const selectedPages = useAppStore((s) => s.selectedPages);
-
   const dpr = Math.min(window.devicePixelRatio, 3);
   const physicalWidth = Math.round(Math.min(width, widthPts) * dpr);
   const rawSrc = `collate://localhost/${docId}/${pageIndex}/${physicalWidth}`;
@@ -71,6 +69,7 @@ export function SidebarThumbnail({
   const aspectRatio = `${widthPts} / ${heightPts}`;
 
   async function invokeOnPages(command: string, extraArgs: Record<string, unknown> = {}) {
+    const selectedPages = useAppStore.getState().selectedPages;
     const indices = selectedPages.has(pageIndex)
       ? [...selectedPages].sort((a, b) => a - b)
       : [pageIndex];
