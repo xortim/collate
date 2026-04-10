@@ -75,6 +75,17 @@ function App() {
     useAppStore.getState().setIsDirty(false);
   }
 
+  function showError(message: string) {
+    toast.error(message, {
+      id: "pdf-error",
+      duration: 6000,
+      action: {
+        label: <BugIcon className="size-4" />,
+        onClick: () => openBugReportForError(message),
+      },
+    });
+  }
+
   async function handleSave(path?: string) {
     const m = manifestRef.current;
     if (!m) return;
@@ -83,15 +94,7 @@ function App() {
       await invoke("save_document", { docId: m.doc_id, path: savePath });
       useAppStore.getState().setIsDirty(false);
     } catch (e) {
-      const message = String(e);
-      toast.error(message, {
-        id: "pdf-error",
-        duration: 6000,
-        action: {
-          label: <BugIcon className="size-4" />,
-          onClick: () => openBugReportForError(message),
-        },
-      });
+      showError(String(e));
     }
   }
 
@@ -107,15 +110,7 @@ function App() {
       const next = await invoke<DocumentManifest>("undo_document", { docId: m.doc_id });
       setManifest(next);
     } catch (e) {
-      const message = String(e);
-      toast.error(message, {
-        id: "pdf-error",
-        duration: 6000,
-        action: {
-          label: <BugIcon className="size-4" />,
-          onClick: () => openBugReportForError(message),
-        },
-      });
+      showError(String(e));
     }
   }
 
@@ -126,15 +121,7 @@ function App() {
       const next = await invoke<DocumentManifest>("redo_document", { docId: m.doc_id });
       setManifest(next);
     } catch (e) {
-      const message = String(e);
-      toast.error(message, {
-        id: "pdf-error",
-        duration: 6000,
-        action: {
-          label: <BugIcon className="size-4" />,
-          onClick: () => openBugReportForError(message),
-        },
-      });
+      showError(String(e));
     }
   }
 
@@ -187,8 +174,7 @@ function App() {
     }
   }
 
-  // Alias Mod+= to Mod++ for zoom in. The native menu owns Mod++ (CmdOrCtrl+Plus);
-  // Mod+= is the unshifted physical key and is not consumed by the menu.
+  // Handle Mod+= for zoom in (mirrors the native menu's CmdOrCtrl+= shortcut).
   // Also handles ? (shortcut overlay) and Cmd+A (select all pages).
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -213,17 +199,6 @@ function App() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  // Clicking anywhere on a Sonner toast dismisses it.
-  useEffect(() => {
-    function onDocumentClick(e: MouseEvent) {
-      if ((e.target as Element).closest('[data-sonner-toast]')) {
-        toast.dismiss("pdf-error");
-      }
-    }
-    document.addEventListener('click', onDocumentClick);
-    return () => document.removeEventListener('click', onDocumentClick);
   }, []);
 
   // Listen for native menu events forwarded from the Rust backend

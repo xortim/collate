@@ -107,94 +107,92 @@ export function Toolbar({ onOpen, loading, hasDocument, canUndo, canRedo, onSave
         </ButtonGroup>
 
         <ButtonGroup>
-          <ButtonGroup>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="icon" variant="outline" onClick={onUndo} disabled={!canUndo} aria-label="Undo">
-                  <Undo2 className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Undo ({modKey()}Z)</TooltipContent>
-            </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="outline" onClick={onUndo} disabled={!canUndo} aria-label="Undo">
+                <Undo2 className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Undo ({modKey()}Z)</TooltipContent>
+          </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="icon" variant="outline" onClick={onRedo} disabled={!canRedo} aria-label="Redo">
-                  <Redo2 className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Redo ({shiftModKey()}Z)</TooltipContent>
-            </Tooltip>
-          </ButtonGroup>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="outline" onClick={onRedo} disabled={!canRedo} aria-label="Redo">
+                <Redo2 className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Redo ({shiftModKey()}Z)</TooltipContent>
+          </Tooltip>
+        </ButtonGroup>
 
-          <ButtonGroup>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={zoomOut}
-                  disabled={!hasDocument || (zoom <= ZOOM_STEPS[0] && zoomMode === "manual")}
-                  aria-label="Zoom out"
-                >
-                  <ZoomOut className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Zoom Out ({modKey()}−)</TooltipContent>
-            </Tooltip>
+        <ButtonGroup>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={zoomOut}
+                disabled={!hasDocument || (zoom <= ZOOM_STEPS[0] && zoomMode === "manual")}
+                aria-label="Zoom out"
+              >
+                <ZoomOut className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Zoom Out ({modKey()}−)</TooltipContent>
+          </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={zoomIn}
-                  disabled={!hasDocument || (zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1] && zoomMode === "manual")}
-                  aria-label="Zoom in"
-                >
-                  <ZoomIn className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Zoom In ({modKey()}+)</TooltipContent>
-            </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={zoomIn}
+                disabled={!hasDocument || (zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1] && zoomMode === "manual")}
+                aria-label="Zoom in"
+              >
+                <ZoomIn className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Zoom In ({modKey()}=)</TooltipContent>
+          </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant={zoomMode === "fit-width" ? "secondary" : "outline"}
-                  onClick={fitWidth}
-                  disabled={!hasDocument}
-                  aria-label="Fit width"
-                >
-                  <Maximize2 className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Fit Width ({modKey()}0)</TooltipContent>
-            </Tooltip>
-          </ButtonGroup>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={zoomMode === "fit-width" ? "secondary" : "outline"}
+                onClick={fitWidth}
+                disabled={!hasDocument}
+                aria-label="Fit width"
+              >
+                <Maximize2 className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Fit Width ({modKey()}0)</TooltipContent>
+          </Tooltip>
+        </ButtonGroup>
 
-          <ButtonGroup>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="icon" variant="outline" disabled aria-label="Find">
-                  <Search className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Find ({modKey()}F) — coming soon</TooltipContent>
-            </Tooltip>
-          </ButtonGroup>
+        <ButtonGroup>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="outline" disabled aria-label="Find">
+                <Search className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Find ({modKey()}F) — coming soon</TooltipContent>
+          </Tooltip>
+        </ButtonGroup>
 
-          <ButtonGroup>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="icon" variant="outline" disabled aria-label="Print">
-                  <Printer className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Print ({modKey()}P) — coming in P1.6</TooltipContent>
-            </Tooltip>
-          </ButtonGroup>
+        <ButtonGroup>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="outline" disabled aria-label="Print">
+                <Printer className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Print ({modKey()}P) — coming in P1.6</TooltipContent>
+          </Tooltip>
         </ButtonGroup>
 
         <div className="flex-1" />
