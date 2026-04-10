@@ -1,19 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
+import { toast } from "sonner";
+import { BugIcon } from "lucide-react";
+import { BugReportDialog } from "./components/BugReportDialog";
+import { ShortcutOverlay } from "./components/ShortcutOverlay";
+import { EmptyState } from "./components/EmptyState";
 import { PageViewer, PageViewerHandle } from "./components/PageViewer";
 import { PageSidebar } from "./components/PageSidebar";
 import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
 import { Separator } from "@/components/ui/separator";
+import { Toaster } from "@/components/ui/sonner";
 import {
   Sidebar,
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar";
-import { useAppStore } from "@/store";
+import { useAppStore, ZOOM_STEPS, PageDisplay } from "@/store";
 import { useTheme } from "@/hooks/useTheme";
+import { platformName } from "@/lib/platform";
 
 interface PageSize {
   width_pts: number;
@@ -24,18 +32,25 @@ interface DocumentManifest {
   doc_id: number;
   page_count: number;
   filename: string;
+  path: string;
   page_sizes: PageSize[];
+  can_undo: boolean;
+  can_redo: boolean;
 }
 
 function App() {
   const [manifest, setManifest] = useState<DocumentManifest | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [bugReportOpen, setBugReportOpen] = useState(false);
+  const [bugPrefill, setBugPrefill] = useState<{ title: string; description: string } | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   const viewerRef = useRef<PageViewerHandle>(null);
+  const manifestRef = useRef<DocumentManifest | null>(null);
   const sidebarWidth = useAppStore((s) => s.sidebarWidth);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
+  const isDirty = useAppStore((s) => s.isDirty);
 
   // Apply theme (dark class on <html>) and keep it in sync with OS changes
   useTheme();
@@ -46,6 +61,81 @@ function App() {
     invoke("set_menu_theme", { theme });
   }, [theme]);
 
+  // Keep ref in sync so menu event listeners (registered once on mount) always
+  // see the current manifest rather than the stale closure value.
+  useEffect(() => { manifestRef.current = manifest; }, [manifest]);
+
+  async function handleClose() {
+    const m = manifestRef.current;
+    if (!m) return;
+    await invoke("close_document", { docId: m.doc_id });
+    await invoke("set_pdf_menus_enabled", { enabled: false });
+    setManifest(null);
+    useAppStore.getState().setActivePage(0);
+    useAppStore.getState().clearSelection();
+    useAppStore.getState().setIsDirty(false);
+  }
+
+  function showError(message: string) {
+    toast.error(message, {
+      duration: 6000,
+      action: {
+        label: <BugIcon className="size-4" />,
+        onClick: () => openBugReportForError(message),
+      },
+    });
+  }
+
+  async function handleSave(path?: string) {
+    const m = manifestRef.current;
+    if (!m) return;
+    const savePath = path ?? m.path;
+    try {
+      await invoke("save_document", { docId: m.doc_id, path: savePath });
+      useAppStore.getState().setIsDirty(false);
+    } catch (e) {
+      showError(String(e));
+    }
+  }
+
+  async function handleSaveAs() {
+    const path = await saveDialog({ filters: [{ name: "PDF", extensions: ["pdf"] }] });
+    if (path) await handleSave(path);
+  }
+
+  async function handleUndo() {
+    const m = manifestRef.current;
+    if (!m) return;
+    try {
+      const next = await invoke<DocumentManifest>("undo_document", { docId: m.doc_id });
+      setManifest(next);
+    } catch (e) {
+      showError(String(e));
+    }
+  }
+
+  async function handleRedo() {
+    const m = manifestRef.current;
+    if (!m) return;
+    try {
+      const next = await invoke<DocumentManifest>("redo_document", { docId: m.doc_id });
+      setManifest(next);
+    } catch (e) {
+      showError(String(e));
+    }
+  }
+
+  async function openBugReportForError(message: string) {
+    const version = await getVersion().catch(() => "unknown");
+    setBugPrefill({
+      title: `Error: ${message.slice(0, 50)}`,
+      description:
+        `Error: ${message}\n\nVersion: ${version}\nPlatform: ${platformName}` +
+        `\n\n---\nPlease describe what you were doing when this happened:\n`,
+    });
+    setBugReportOpen(true);
+  }
+
   async function handleOpen() {
     const path = await openDialog({
       multiple: false,
@@ -55,7 +145,6 @@ function App() {
     if (!path) return;
 
     setLoading(true);
-    setError(null);
 
     if (manifest) {
       await invoke("close_document", { docId: manifest.doc_id });
@@ -66,22 +155,120 @@ function App() {
       const m = await invoke<DocumentManifest>("open_document", { path });
       setManifest(m);
       useAppStore.getState().setActivePage(0);
+      useAppStore.getState().clearSelection();
+      useAppStore.getState().setIsDirty(false);
+      void invoke("set_pdf_menus_enabled", { enabled: true });
     } catch (e) {
-      setError(String(e));
+      const message = String(e);
+      toast.error(message, {
+        duration: 6000,
+        action: {
+          label: <BugIcon className="size-4" />,
+          onClick: () => openBugReportForError(message),
+        },
+      });
     } finally {
       setLoading(false);
     }
   }
 
+  // Handle Mod+= for zoom in (mirrors the native menu's CmdOrCtrl+= shortcut).
+  // Also handles ? (shortcut overlay) and Cmd+A (select all pages).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "=") {
+        e.preventDefault();
+        const { zoom, setZoom, setZoomMode } = useAppStore.getState();
+        const next = ZOOM_STEPS.find((s) => s > zoom) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1];
+        setZoom(next);
+        setZoomMode("manual");
+      }
+      if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+        const m = manifestRef.current;
+        if (m) {
+          e.preventDefault();
+          useAppStore.getState().selectAll(m.page_count);
+        }
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   // Listen for native menu events forwarded from the Rust backend
   useEffect(() => {
-    const unlistenOpen = listen<void>("menu-open", () => handleOpen());
+    const unlistenOpen  = listen<void>("menu-open",  () => handleOpen());
+    const unlistenClose = listen<void>("menu-close", () => handleClose());
     const unlistenTheme = listen<string>("menu-theme", (e) =>
       setTheme(e.payload as "light" | "dark" | "system")
     );
+    const unlistenZoomIn = listen<void>("menu-zoom-in", () => {
+      const { zoom, setZoom, setZoomMode } = useAppStore.getState();
+      const next = ZOOM_STEPS.find((s) => s > zoom) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1];
+      setZoom(next);
+      setZoomMode("manual");
+    });
+    const unlistenZoomOut = listen<void>("menu-zoom-out", () => {
+      const { zoom, setZoom, setZoomMode } = useAppStore.getState();
+      const prev = [...ZOOM_STEPS].reverse().find((s) => s < zoom) ?? ZOOM_STEPS[0];
+      setZoom(prev);
+      setZoomMode("manual");
+    });
+    const unlistenZoomFit = listen<void>("menu-zoom-fit-width", () => {
+      useAppStore.getState().setZoomMode("fit-width");
+    });
+    // Document menu stubs — not yet implemented, no-op for now
+    const unlistenRotateCw     = listen<void>("menu-rotate-cw",      () => { /* stub */ });
+    const unlistenRotateCwAll  = listen<void>("menu-rotate-cw-all",  () => { /* stub */ });
+    const unlistenRotateCcw    = listen<void>("menu-rotate-ccw",     () => { /* stub */ });
+    const unlistenRotateCcwAll = listen<void>("menu-rotate-ccw-all", () => { /* stub */ });
+    const unlistenSplit        = listen<void>("menu-split",          () => { /* stub */ });
+    const unlistenMerge        = listen<void>("menu-merge",          () => { /* stub */ });
+    const unlistenImport       = listen<void>("menu-import-pages",   () => { /* stub */ });
+    // View → Page Display
+    const unlistenDisplay = listen<string>("menu-display", (e) => {
+      useAppStore.getState().setPageDisplay(e.payload as PageDisplay);
+    });
+    const unlistenReportBug = listen<void>("menu-report-bug", () => {
+      setBugReportOpen(true);
+    });
+    const unlistenSave    = listen<void>("menu-save",    () => handleSave());
+    const unlistenSaveAs  = listen<void>("menu-save-as", () => handleSaveAs());
+    const unlistenUndo      = listen<void>("menu-undo",       () => handleUndo());
+    const unlistenRedo      = listen<void>("menu-redo",       () => handleRedo());
+    const unlistenSelectAll = listen<void>("menu-select-all", () => {
+      const m = manifestRef.current;
+      if (m) useAppStore.getState().selectAll(m.page_count);
+    });
+    const unlistenPrint   = listen<void>("menu-print",   () => {
+      toast.error("Print is not yet implemented.", { duration: 4000 });
+    });
     return () => {
       unlistenOpen.then((fn) => fn());
+      unlistenClose.then((fn) => fn());
       unlistenTheme.then((fn) => fn());
+      unlistenZoomIn.then((fn) => fn());
+      unlistenZoomOut.then((fn) => fn());
+      unlistenZoomFit.then((fn) => fn());
+      unlistenRotateCw.then((fn) => fn());
+      unlistenRotateCwAll.then((fn) => fn());
+      unlistenRotateCcw.then((fn) => fn());
+      unlistenRotateCcwAll.then((fn) => fn());
+      unlistenSplit.then((fn) => fn());
+      unlistenMerge.then((fn) => fn());
+      unlistenImport.then((fn) => fn());
+      unlistenDisplay.then((fn) => fn());
+      unlistenReportBug.then((fn) => fn());
+      unlistenSave.then((fn) => fn());
+      unlistenSaveAs.then((fn) => fn());
+      unlistenUndo.then((fn) => fn());
+      unlistenRedo.then((fn) => fn());
+      unlistenSelectAll.then((fn) => fn());
+      unlistenPrint.then((fn) => fn());
     };
     // handleOpen is defined in render scope but only reads stable refs/setState.
     // Omitting from deps avoids re-registering listeners on every render.
@@ -103,20 +290,25 @@ function App() {
             docId={manifest.doc_id}
             pageSizes={manifest.page_sizes}
             onScrollToPage={(i) => viewerRef.current?.scrollToPage(i)}
+            onBugReport={openBugReportForError}
           />
         </Sidebar>
       )}
 
       <SidebarInset className="flex flex-col overflow-hidden">
-        <Toolbar onOpen={handleOpen} loading={loading} />
+        <Toolbar
+          onOpen={handleOpen}
+          loading={loading}
+          hasDocument={manifest !== null}
+          isDirty={isDirty}
+          canUndo={manifest?.can_undo ?? false}
+          canRedo={manifest?.can_redo ?? false}
+          onSave={handleSave}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+        />
 
         <Separator />
-
-        {error && (
-          <div className="px-3 py-1 text-sm text-destructive bg-destructive/10 shrink-0">
-            {error}
-          </div>
-        )}
 
         <div className="flex-1 overflow-hidden min-h-0">
           {manifest ? (
@@ -126,15 +318,24 @@ function App() {
               pageSizes={manifest.page_sizes}
             />
           ) : (
-            <div className="flex flex-col items-center justify-center h-full gap-1 text-sm text-muted-foreground">
-              <span>Open a PDF to get started</span>
-              <span className="text-xs">File → Open… or ⌘O</span>
-            </div>
+            <EmptyState onOpen={handleOpen} />
           )}
         </div>
 
         <StatusBar pageCount={manifest?.page_count} />
       </SidebarInset>
+
+      <ShortcutOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+
+      <BugReportDialog
+        open={bugReportOpen}
+        onOpenChange={(next) => {
+          setBugReportOpen(next);
+          if (!next) setBugPrefill(null);
+        }}
+        prefill={bugPrefill ?? undefined}
+      />
+      <Toaster theme={theme} position="top-center" offset={{ top: 56 }} />
     </SidebarProvider>
   );
 }

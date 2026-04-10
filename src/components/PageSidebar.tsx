@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   SidebarContent,
@@ -17,6 +17,7 @@ interface Props {
   docId: number;
   pageSizes: PageSize[];
   onScrollToPage(index: number): void;
+  onBugReport(message: string): void;
 }
 
 /** Gap between thumbnails in pixels. */
@@ -31,9 +32,33 @@ const THUMBNAIL_GAP = 16;
  * width — including after the user resizes the window. The same ref drives
  * both the observer and the virtualizer's scroll container.
  */
-export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
+export function PageSidebar({ docId, pageSizes, onScrollToPage, onBugReport }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [thumbnailWidth, setThumbnailWidth] = useState(120);
+
+  // Range-select anchor — tracked in a ref to avoid re-renders.
+  const anchorRef = useRef(0);
+
+  const selectedPages = useAppStore((s) => s.selectedPages);
+  const togglePageSelection = useAppStore((s) => s.togglePageSelection);
+  const selectPageRange = useAppStore((s) => s.selectPageRange);
+  const clearSelection = useAppStore((s) => s.clearSelection);
+
+  const handleThumbClick = useCallback(
+    (index: number, e: React.MouseEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        togglePageSelection(index);
+        anchorRef.current = index;
+      } else if (e.shiftKey) {
+        selectPageRange(anchorRef.current, index);
+      } else {
+        clearSelection();
+        onScrollToPage(index);
+        anchorRef.current = index;
+      }
+    },
+    [togglePageSelection, selectPageRange, clearSelection, onScrollToPage]
+  );
 
   // Measure available content width and update thumbnails when it changes.
   useEffect(() => {
@@ -41,8 +66,9 @@ export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       const w = entry.contentBoxSize[0].inlineSize;
-      // Subtract horizontal padding (pl-3 = 12px left, pr-4 = 16px right = 28px total).
-      setThumbnailWidth(Math.max(40, Math.floor(w - 28)));
+      // w is already the content-box width (inside padding). Subtract only the
+      // button's p-2 padding (8px each side = 16px) to match the image display width.
+      setThumbnailWidth(Math.max(40, Math.floor(w - 16)));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -83,7 +109,7 @@ export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
       </SidebarHeader>
       <SidebarContent className="overflow-hidden p-0">
         {/* containerRef drives both ResizeObserver and the virtualizer. */}
-        <div ref={containerRef} className="h-full overflow-y-auto py-2 pl-3 pr-4">
+        <div ref={containerRef} className="h-full overflow-y-auto py-2 pl-3 pr-6">
           <div
             className="relative w-full"
             style={{ height: thumbVirtualizer.getTotalSize() }}
@@ -103,7 +129,9 @@ export function PageSidebar({ docId, pageSizes, onScrollToPage }: Props) {
                     widthPts={width_pts}
                     heightPts={height_pts}
                     isActive={item.index === activePage}
-                    onClick={() => onScrollToPage(item.index)}
+                    isSelected={selectedPages.has(item.index)}
+                    onClick={(e) => handleThumbClick(item.index, e)}
+                    onBugReport={onBugReport}
                   />
                 </div>
               );

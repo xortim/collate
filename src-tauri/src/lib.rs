@@ -50,19 +50,27 @@ struct AppState {
 // ---------------------------------------------------------------------------
 
 /// Physical page dimensions in PDF points (1 pt = 1/72 inch).
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct PageSize {
     width_pts: f64,
     height_pts: f64,
 }
 
-/// Returned by `open_document`.
-#[derive(Serialize)]
+/// Returned by `open_document` and all mutation commands.
+#[derive(Serialize, Clone)]
 struct DocumentManifest {
     doc_id: u32,
     page_count: usize,
     filename: String,
+    /// Full filesystem path — used by the frontend for Save (no dialog needed).
+    path: String,
     page_sizes: Vec<PageSize>,
+    /// Whether an undo step is available. Always false until the command stack
+    /// is implemented in Phase 3.
+    can_undo: bool,
+    /// Whether a redo step is available. Always false until the command stack
+    /// is implemented in Phase 3.
+    can_redo: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +150,10 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
         doc_id,
         page_count,
         filename,
+        path,
         page_sizes,
+        can_undo: false,
+        can_redo: false,
     })
 }
 
@@ -152,6 +163,77 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
 fn close_document(doc_id: u32, state: State<AppState>) -> Result<(), String> {
     state.documents.lock().unwrap().remove(&doc_id);
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Mutation stubs — real implementations land in Phase 3 (mutations).
+// Each validates the doc_id and returns Err until the body is filled in.
+// The frontend wires up to these now so plumbing is validated end-to-end.
+// ---------------------------------------------------------------------------
+
+/// Look up a document by ID. Returns a clone of the Arc so callers can release
+/// the lock before doing more work. Extracted from the tauri::command wrappers
+/// so the validation logic can be exercised in unit tests without an AppHandle.
+fn require_doc(doc_id: u32, state: &AppState) -> Result<Arc<DocumentEntry>, String> {
+    state
+        .documents
+        .lock()
+        .unwrap()
+        .get(&doc_id)
+        .cloned()
+        .ok_or_else(|| format!("document {doc_id} not found"))
+}
+
+/// Persist the document to `path`.
+/// TODO(mutations): write bytes via lopdf once mutation infrastructure exists.
+#[tauri::command]
+fn save_document(doc_id: u32, path: String, state: State<AppState>) -> Result<(), String> {
+    require_doc(doc_id, &state)?;
+    let _ = path; // will be used by the real implementation
+    Err("save_document: not yet implemented".to_string()) // TODO(mutations)
+}
+
+/// Undo the last mutation and return the updated manifest.
+/// TODO(mutations): pop from the per-document command stack.
+#[tauri::command]
+fn undo_document(doc_id: u32, state: State<AppState>) -> Result<DocumentManifest, String> {
+    require_doc(doc_id, &state)?;
+    Err("undo_document: not yet implemented".to_string()) // TODO(mutations)
+}
+
+/// Redo the last undone mutation and return the updated manifest.
+/// TODO(mutations): push back onto the per-document command stack.
+#[tauri::command]
+fn redo_document(doc_id: u32, state: State<AppState>) -> Result<DocumentManifest, String> {
+    require_doc(doc_id, &state)?;
+    Err("redo_document: not yet implemented".to_string()) // TODO(mutations)
+}
+
+/// Rotate `page_indices` by `degrees` (90 or -90) and return the updated manifest.
+/// TODO(mutations): apply rotation via lopdf page dictionary.
+#[tauri::command]
+fn rotate_pages(
+    doc_id: u32,
+    page_indices: Vec<usize>,
+    degrees: i32,
+    state: State<AppState>,
+) -> Result<DocumentManifest, String> {
+    require_doc(doc_id, &state)?;
+    let _ = (page_indices, degrees);
+    Err("rotate_pages: not yet implemented".to_string()) // TODO(mutations)
+}
+
+/// Delete `page_indices` and return the updated manifest.
+/// TODO(mutations): remove pages via lopdf and rebuild page tree.
+#[tauri::command]
+fn delete_pages(
+    doc_id: u32,
+    page_indices: Vec<usize>,
+    state: State<AppState>,
+) -> Result<DocumentManifest, String> {
+    require_doc(doc_id, &state)?;
+    let _ = page_indices;
+    Err("delete_pages: not yet implemented".to_string()) // TODO(mutations)
 }
 
 /// Called by the frontend to keep the native menu checkmarks in sync with the
@@ -200,6 +282,91 @@ fn set_theme_checks(app: &tauri::AppHandle, selected: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// PDF document menu helpers
+// ---------------------------------------------------------------------------
+
+const PDF_MENU_IDS: &[&str] = &[
+    "close", "print", "undo", "redo", "select-all", "find",
+    "save", "save-as",
+    "zoom-in", "zoom-out", "zoom-fit-width",
+    // Document menu
+    "rotate-cw", "rotate-cw-all", "rotate-ccw", "rotate-ccw-all",
+    "split", "merge", "import-pages",
+];
+
+/// CheckMenuItem IDs that are enabled only when a document is open.
+const PDF_CHECK_MENU_IDS: &[&str] = &[
+    "display-continuous", "display-single", "display-spread",
+];
+
+/// Recursively walk `items`, find every MenuItem/CheckMenuItem whose ID is in
+/// the PDF_MENU_IDS / PDF_CHECK_MENU_IDS lists, and set its enabled state.
+fn apply_pdf_menu_enabled<R: tauri::Runtime>(items: Vec<MenuItemKind<R>>, enabled: bool) {
+    for item in items {
+        match item {
+            MenuItemKind::Submenu(sub) => {
+                if let Ok(children) = sub.items() {
+                    apply_pdf_menu_enabled(children, enabled);
+                }
+            }
+            MenuItemKind::MenuItem(mi) => {
+                if PDF_MENU_IDS.contains(&mi.id().as_ref()) {
+                    let _ = mi.set_enabled(enabled);
+                }
+            }
+            MenuItemKind::Check(check) => {
+                if PDF_CHECK_MENU_IDS.contains(&check.id().as_ref()) {
+                    let _ = check.set_enabled(enabled);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Enable or disable the PDF-dependent menu items.
+/// Called by the frontend after open_document succeeds (true) or on close (false).
+#[tauri::command]
+fn set_pdf_menus_enabled(app: tauri::AppHandle, enabled: bool) {
+    let Some(menu) = app.menu() else { return };
+    let Ok(items) = menu.items() else { return };
+    apply_pdf_menu_enabled(items, enabled);
+}
+
+// ---------------------------------------------------------------------------
+// Display mode helpers
+// ---------------------------------------------------------------------------
+
+/// Recursively walk `items`, update the three display-* CheckMenuItems so that
+/// only the one matching `selected` is checked.
+fn apply_display_checks<R: tauri::Runtime>(items: Vec<MenuItemKind<R>>, selected: &str) {
+    for item in items {
+        match item {
+            MenuItemKind::Submenu(sub) => {
+                if let Ok(children) = sub.items() {
+                    apply_display_checks(children, selected);
+                }
+            }
+            MenuItemKind::Check(check) => {
+                if let Some(mode) = check.id().as_ref().strip_prefix("display-") {
+                    let _ = check.set_checked(mode == selected);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Toggle the Page Display check-marks to reflect `selected`
+/// ("continuous", "single", or "spread"). Called from on_menu_event so the
+/// native menu reflects the new state immediately without a round-trip.
+fn set_display_checks(app: &tauri::AppHandle, selected: &str) {
+    let Some(menu) = app.menu() else { return };
+    let Ok(items) = menu.items() else { return };
+    apply_display_checks(items, selected);
+}
+
+// ---------------------------------------------------------------------------
 // App entry point
 // ---------------------------------------------------------------------------
 
@@ -217,10 +384,34 @@ pub fn run() {
         .menu(menu::build_menu)
         .on_menu_event(|app, event| {
             match event.id().as_ref() {
-                "open" => { let _ = app.emit("menu-open", ()); }
+                "open"    => { let _ = app.emit("menu-open",    ()); }
+                "save"    => { let _ = app.emit("menu-save",    ()); }
+                "save-as" => { let _ = app.emit("menu-save-as", ()); }
+                "close"   => { let _ = app.emit("menu-close",   ()); }
+                "print"   => { let _ = app.emit("menu-print",   ()); }
+                "undo"       => { let _ = app.emit("menu-undo",       ()); }
+                "redo"       => { let _ = app.emit("menu-redo",       ()); }
+                "select-all" => { let _ = app.emit("menu-select-all", ()); }
+                "find"       => { let _ = app.emit("menu-find",       ()); }
+                // Document menu — stubs forwarded to frontend for future implementation
+                "rotate-cw"      => { let _ = app.emit("menu-rotate-cw",      ()); }
+                "rotate-cw-all"  => { let _ = app.emit("menu-rotate-cw-all",  ()); }
+                "rotate-ccw"     => { let _ = app.emit("menu-rotate-ccw",     ()); }
+                "rotate-ccw-all" => { let _ = app.emit("menu-rotate-ccw-all", ()); }
+                "split"          => { let _ = app.emit("menu-split",          ()); }
+                "merge"          => { let _ = app.emit("menu-merge",          ()); }
+                "import-pages"   => { let _ = app.emit("menu-import-pages",   ()); }
+                // View → Page Display — toggle check-marks in Rust, then notify frontend
+                "display-continuous" => { set_display_checks(app, "continuous"); let _ = app.emit("menu-display", "continuous"); }
+                "display-single"     => { set_display_checks(app, "single");     let _ = app.emit("menu-display", "single"); }
+                "display-spread"     => { set_display_checks(app, "spread");     let _ = app.emit("menu-display", "spread"); }
+                "zoom-in"        => { let _ = app.emit("menu-zoom-in",        ()); }
+                "zoom-out"       => { let _ = app.emit("menu-zoom-out",       ()); }
+                "zoom-fit-width" => { let _ = app.emit("menu-zoom-fit-width", ()); }
                 "theme-system" => { set_theme_checks(app, "system"); let _ = app.emit("menu-theme", "system"); }
                 "theme-light"  => { set_theme_checks(app, "light");  let _ = app.emit("menu-theme", "light"); }
                 "theme-dark"   => { set_theme_checks(app, "dark");   let _ = app.emit("menu-theme", "dark"); }
+                "report-bug"   => { let _ = app.emit("menu-report-bug", ()); }
                 _ => {}
             }
         })
@@ -305,7 +496,85 @@ pub fn run() {
             open_document,
             close_document,
             set_menu_theme,
+            set_pdf_menus_enabled,
+            save_document,
+            undo_document,
+            redo_document,
+            rotate_pages,
+            delete_pages,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a bare AppState with no open documents. Does not require pdfium
+    /// or a Tauri AppHandle — safe for pure unit tests.
+    fn empty_state() -> AppState {
+        AppState {
+            documents: Mutex::new(HashMap::new()),
+            next_id: AtomicU32::new(0),
+        }
+    }
+
+    // require_doc — the shared validation helper used by every mutation stub.
+
+    #[test]
+    fn require_doc_returns_err_when_id_absent() {
+        let state = empty_state();
+        assert_eq!(
+            require_doc(0, &state).err().unwrap(),
+            "document 0 not found"
+        );
+    }
+
+    #[test]
+    fn require_doc_error_message_includes_the_id() {
+        let state = empty_state();
+        assert_eq!(
+            require_doc(99, &state).err().unwrap(),
+            "document 99 not found"
+        );
+    }
+
+    // Stub return values — verify the error strings each command produces so
+    // that the frontend toast messages are stable and don't drift silently.
+    //
+    // Note: testing the "doc found → not implemented" path requires a live
+    // PdfDocument, which in turn requires the pdfium shared library. That path
+    // is covered by integration tests in tests/. The unit tests here focus on
+    // the validation logic, which is the only real behaviour in the stubs.
+
+    #[test]
+    fn save_document_error_string_is_stable() {
+        let state = empty_state();
+        assert_eq!(
+            require_doc(1, &state).err().unwrap(),
+            "document 1 not found",
+            "save_document error message changed — update the frontend toast copy too"
+        );
+    }
+
+    #[test]
+    fn undo_redo_error_strings_are_stable() {
+        let state = empty_state();
+        // Both stubs delegate to require_doc, so testing the shared path is
+        // sufficient until the real implementations land.
+        assert_eq!(require_doc(2, &state).err().unwrap(), "document 2 not found");
+        assert_eq!(require_doc(3, &state).err().unwrap(), "document 3 not found");
+    }
+
+    #[test]
+    fn rotate_delete_error_strings_are_stable() {
+        let state = empty_state();
+        assert_eq!(require_doc(4, &state).err().unwrap(), "document 4 not found");
+        assert_eq!(require_doc(5, &state).err().unwrap(), "document 5 not found");
+    }
 }

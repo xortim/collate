@@ -1,4 +1,17 @@
 import "@testing-library/jest-dom";
+import { vi } from "vitest";
+
+// jsdom doesn't implement ResizeObserver. Provide a no-op stub so components
+// that use it (PageSidebar, virtual scroll) don't throw in tests.
+global.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
+// jsdom doesn't implement pointer capture. Provide a no-op stub so
+// SidebarResizeHandle pointer events don't throw.
+HTMLElement.prototype.setPointerCapture = vi.fn();
 
 // jsdom's localStorage is not fully implemented in all vitest environments.
 // Provide a simple in-memory stub so zustand's persist middleware works.

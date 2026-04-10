@@ -34,16 +34,16 @@ Collate is a cross-platform PDF editing suite built with Tauri v2 (Rust backend)
 
 ## Test-Driven Development
 
-Write tests before or alongside code — never after. A feature isn't done until it has a test.
+Write the test first — before any production code. A feature isn't started until there's a failing test for it. A feature isn't done until that test passes. Never write implementation code speculatively and add tests after.
 
 **Rust (backend):**
-- Unit tests live in `#[cfg(test)]` modules at the bottom of the file they test.
+- Write the `#[cfg(test)]` module and failing test cases before implementing the function.
 - Integration tests go in `src-tauri/tests/`.
 - Use `make test-rust` to run. All tests must pass before committing.
 - Rendering changes must also pass `make bench` — see baselines below.
 
 **TypeScript (frontend):**
-- Tests live alongside source files as `*.test.ts` / `*.test.tsx`.
+- Write the `*.test.ts` / `*.test.tsx` file with failing assertions before writing the component or hook.
 - Use `make test-frontend` to run.
 
 **Benchmark baselines (rendering pipeline):**
@@ -64,6 +64,10 @@ Phase 1 — PDF Viewer (walking skeleton). See docs/ARCHITECTURE.md Section 11.2
 ## Developer Context
 
 Tim is learning Rust through this project. He knows Go, bash, and unix tooling well. When writing Rust code, explain Rust-specific concepts as they come up — ownership, borrows, traits, Result/Option patterns, derive macros, etc. Enough to troubleshoot and steer, not drive. Draw parallels to Go where helpful.
+
+## UI Affordance Rule
+
+Any button, menu item, toolbar action, or context menu item that requires an open document **must be disabled** (not hidden) when no document is open. This includes — but is not limited to — zoom controls, page navigation, close, print, and any document-mutation actions. Use shadcn/ui's `disabled` prop (which maps to the native `disabled` attribute and ARIA semantics). The enabled/disabled state must derive from the zustand store's document presence flag, not from ad-hoc local checks.
 
 ## Key Design Principles (from spec)
 
