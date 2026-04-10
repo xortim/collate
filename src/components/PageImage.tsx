@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDebounce } from "@/hooks/useDebounce";
 
 interface Props {
   docId: number;
@@ -9,19 +10,6 @@ interface Props {
   /** Page aspect ratio for the loading placeholder. */
   widthPts: number;
   heightPts: number;
-}
-
-/**
- * Debounces a value by `delay` ms. The initial value is returned immediately;
- * subsequent changes are deferred until the value stops changing.
- */
-function useDebounce<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState<T>(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
 }
 
 /**

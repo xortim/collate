@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { BugIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -24,16 +25,6 @@ interface Props {
   isSelected: boolean;
   onClick(e: React.MouseEvent): void;
   onBugReport(message: string): void;
-}
-
-/** Debounces a value by `delay` ms. The initial value is returned immediately. */
-function useDebounce<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState<T>(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
 }
 
 /**

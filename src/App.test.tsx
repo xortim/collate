@@ -23,6 +23,9 @@ const MOCK_MANIFEST = {
   doc_id: 1,
   page_count: 3,
   filename: "test.pdf",
+  path: "/path/to/test.pdf",
+  can_undo: false,
+  can_redo: false,
   page_sizes: [
     { width_pts: 612, height_pts: 792 },
     { width_pts: 612, height_pts: 792 },
