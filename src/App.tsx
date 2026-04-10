@@ -50,6 +50,7 @@ function App() {
   const sidebarWidth = useAppStore((s) => s.sidebarWidth);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
+  const isDirty = useAppStore((s) => s.isDirty);
 
   // Apply theme (dark class on <html>) and keep it in sync with OS changes
   useTheme();
@@ -77,7 +78,6 @@ function App() {
 
   function showError(message: string) {
     toast.error(message, {
-      id: "pdf-error",
       duration: 6000,
       action: {
         label: <BugIcon className="size-4" />,
@@ -161,9 +161,7 @@ function App() {
     } catch (e) {
       const message = String(e);
       toast.error(message, {
-        id: "pdf-error",
         duration: 6000,
-        onClick: () => toast.dismiss("pdf-error"),
         action: {
           label: <BugIcon className="size-4" />,
           onClick: () => openBugReportForError(message),
@@ -247,7 +245,7 @@ function App() {
       if (m) useAppStore.getState().selectAll(m.page_count);
     });
     const unlistenPrint   = listen<void>("menu-print",   () => {
-      toast.error("Print is not yet implemented.", { id: "pdf-error", duration: 4000 });
+      toast.error("Print is not yet implemented.", { duration: 4000 });
     });
     return () => {
       unlistenOpen.then((fn) => fn());
@@ -302,6 +300,7 @@ function App() {
           onOpen={handleOpen}
           loading={loading}
           hasDocument={manifest !== null}
+          isDirty={isDirty}
           canUndo={manifest?.can_undo ?? false}
           canRedo={manifest?.can_redo ?? false}
           onSave={handleSave}

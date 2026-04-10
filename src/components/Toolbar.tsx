@@ -30,6 +30,7 @@ interface ToolbarProps {
   onOpen(): void;
   loading: boolean;
   hasDocument: boolean;
+  isDirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
   onSave(): void;
@@ -51,7 +52,7 @@ const THEME_LABEL: Record<Theme, string> = {
   dark: "Theme: Dark",
 };
 
-export function Toolbar({ onOpen, loading, hasDocument, canUndo, canRedo, onSave, onUndo, onRedo }: ToolbarProps) {
+export function Toolbar({ onOpen, loading, hasDocument, isDirty, canUndo, canRedo, onSave, onUndo, onRedo }: ToolbarProps) {
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const zoom = useAppStore((s) => s.zoom);
@@ -98,7 +99,7 @@ export function Toolbar({ onOpen, loading, hasDocument, canUndo, canRedo, onSave
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="icon" variant="outline" onClick={onSave} disabled={!hasDocument} aria-label="Save">
+              <Button size="icon" variant="outline" onClick={onSave} disabled={!hasDocument || !isDirty} aria-label="Save">
                 <Save className="size-4" />
               </Button>
             </TooltipTrigger>

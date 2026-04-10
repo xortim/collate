@@ -10,6 +10,7 @@ function renderToolbar(props: {
   onOpen?: () => void;
   loading?: boolean;
   hasDocument?: boolean;
+  isDirty?: boolean;
   canUndo?: boolean;
   canRedo?: boolean;
   onSave?: () => void;
@@ -22,6 +23,7 @@ function renderToolbar(props: {
         onOpen={props.onOpen ?? vi.fn()}
         loading={props.loading ?? false}
         hasDocument={props.hasDocument ?? false}
+        isDirty={props.isDirty ?? false}
         canUndo={props.canUndo ?? false}
         canRedo={props.canRedo ?? false}
         onSave={props.onSave ?? vi.fn()}
@@ -66,14 +68,19 @@ describe("Toolbar", () => {
       expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
     });
 
-    it("is enabled when a document is open", () => {
-      renderToolbar({ hasDocument: true });
+    it("is enabled when a document is open and dirty", () => {
+      renderToolbar({ hasDocument: true, isDirty: true });
       expect(screen.getByRole("button", { name: /save/i })).not.toBeDisabled();
+    });
+
+    it("is disabled when document is open but not dirty", () => {
+      renderToolbar({ hasDocument: true, isDirty: false });
+      expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
     });
 
     it("calls onSave when clicked", async () => {
       const onSave = vi.fn();
-      renderToolbar({ hasDocument: true, onSave });
+      renderToolbar({ hasDocument: true, isDirty: true, onSave });
       await userEvent.click(screen.getByRole("button", { name: /save/i }));
       expect(onSave).toHaveBeenCalledOnce();
     });

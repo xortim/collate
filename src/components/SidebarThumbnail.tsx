@@ -79,7 +79,6 @@ export function SidebarThumbnail({
     } catch (e) {
       const message = String(e);
       toast.error(message, {
-        id: "pdf-error",
         duration: 6000,
         action: {
           label: <BugIcon className="size-4" />,

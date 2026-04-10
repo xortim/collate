@@ -98,7 +98,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
         expect.stringMatching(/corrupt pdf/i),
-        expect.objectContaining({ id: "pdf-error" })
+        expect.objectContaining({ duration: 6000 })
       );
     });
   });
