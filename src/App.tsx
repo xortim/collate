@@ -337,6 +337,7 @@ function App() {
       {manifest && (
         <InfoPanel
           docId={manifest.doc_id}
+          filename={manifest.filename}
           open={infoPanelOpen}
           onOpenChange={setInfoPanelOpen}
         />

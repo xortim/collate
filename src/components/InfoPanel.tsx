@@ -18,6 +18,12 @@ import {
 } from "@/components/ui/tabs";
 import { parsePdfDate, formatBytes } from "@/lib/pdfDate";
 import { PanelSection } from "@/components/PanelSection";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 
 
 interface DocumentSecurity {
@@ -43,25 +49,45 @@ interface DocumentInfo {
   page_count:        number;
   file_size_bytes:   number | null;
   pdf_version:       string | null;
+  page_size:         { width_pts: number; height_pts: number } | null;
   security:          DocumentSecurity;
 }
 
 interface InfoPanelProps {
   docId: number;
+  filename: string;
   open: boolean;
   onOpenChange(open: boolean): void;
 }
 
 function Row({ label, value }: { label: string; value: string | null }) {
   return (
-    <dl className="flex items-start justify-between">
-      <dt className="shrink-0 pr-4">{label}</dt>
-      {value !== null ? (
-        <dd className="text-muted-foreground text-right break-all">{value}</dd>
-      ) : (
-        <dd className="text-muted-foreground/60 shrink-0">Not set</dd>
-      )}
-    </dl>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <dl className="flex items-start justify-between cursor-default select-none">
+          <dt className="shrink-0 pr-4">{label}</dt>
+          {value !== null ? (
+            <dd className="text-muted-foreground text-right break-all">{value}</dd>
+          ) : (
+            <dd className="text-muted-foreground/60 shrink-0">Not set</dd>
+          )}
+        </dl>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem
+          disabled={value === null}
+          onSelect={() => navigator.clipboard.writeText(value!)}
+        >
+          Copy Value
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={value === null}
+          onSelect={() => navigator.clipboard.writeText(`${label}: ${value}`)}
+        >
+          {`Copy "${label}: …"`}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -109,6 +135,13 @@ function SecurityContent({ security }: { security: DocumentSecurity }) {
   );
 }
 
+function formatPageSize(ps: { width_pts: number; height_pts: number } | null): string | null {
+  if (!ps) return null;
+  const w = parseFloat((ps.width_pts  / 72).toFixed(2));
+  const h = parseFloat((ps.height_pts / 72).toFixed(2));
+  return `${w} × ${h} in`;
+}
+
 function LoadingSkeleton() {
   return (
     <div className="flex flex-col gap-4">
@@ -123,7 +156,7 @@ function LoadingSkeleton() {
   );
 }
 
-export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
+export function InfoPanel({ docId, filename, open, onOpenChange }: InfoPanelProps) {
   const [info, setInfo] = useState<DocumentInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -167,11 +200,19 @@ export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
               <p className="text-sm text-destructive text-center mt-8">Could not load document info.</p>
             ) : (
               <div className="flex flex-col gap-3">
+                <PanelSection heading="Document">
+                  <RowList rows={[
+                    { label: "Name", value: filename },
+                    { label: "Type", value: "PDF Document" },
+                  ]} />
+                </PanelSection>
+
                 <PanelSection heading="General">
                   <RowList rows={[
-                    { label: "Pages",   value: String(info?.page_count ?? "—") },
-                    { label: "Size",    value: formatBytes(info?.file_size_bytes ?? null) },
-                    { label: "Version", value: info?.pdf_version ?? null },
+                    { label: "Pages",     value: String(info?.page_count ?? "—") },
+                    { label: "Size",      value: formatBytes(info?.file_size_bytes ?? null) },
+                    { label: "Version",   value: info?.pdf_version ?? null },
+                    { label: "Page Size", value: formatPageSize(info?.page_size ?? null) },
                   ]} />
                 </PanelSection>
 
@@ -201,11 +242,29 @@ export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
             ) : error ? (
               <p className="text-sm text-destructive text-center mt-8">Could not load document info.</p>
             ) : keywords.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {keywords.map((kw) => (
-                  <Badge key={kw} variant="secondary">{kw}</Badge>
-                ))}
-              </div>
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <div className="flex flex-wrap gap-2" data-testid="keywords-area">
+                    {keywords.map((kw) => (
+                      <ContextMenu key={kw}>
+                        <ContextMenuTrigger asChild>
+                          <Badge variant="secondary" className="cursor-default">{kw}</Badge>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem onSelect={() => navigator.clipboard.writeText(kw)}>
+                            Copy Keyword
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    ))}
+                  </div>
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  <ContextMenuItem onSelect={() => navigator.clipboard.writeText(keywords.join(", "))}>
+                    Copy All Keywords
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
             ) : (
               <p className="text-sm text-muted-foreground text-center mt-8">
                 No keywords defined.

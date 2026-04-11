@@ -106,6 +106,9 @@ struct DocumentInfo {
     page_count:        usize,
     file_size_bytes:   Option<u64>,     // None if stat() fails (e.g. unsaved temp doc)
     pdf_version:       Option<String>,  // e.g. "PDF 1.7"; None if Unset
+    /// Dimensions of the first page in PDF points (1 pt = 1/72 inch).
+    /// None only when the document has zero pages.
+    page_size:         Option<PageSize>,
     security:          DocumentSecurity,
 }
 
@@ -247,6 +250,11 @@ fn get_document_info(doc_id: u32, state: State<AppState>) -> Result<DocumentInfo
         can_assemble:  perms.can_assemble_document().unwrap_or(false),
     };
 
+    let page_size = doc.pages().get(0).ok().map(|p| PageSize {
+        width_pts:  p.width().value  as f64,
+        height_pts: p.height().value as f64,
+    });
+
     Ok(DocumentInfo {
         title:             meta.get(Title).map(|t| t.value().to_string()),
         author:            meta.get(Author).map(|t| t.value().to_string()),
@@ -259,6 +267,7 @@ fn get_document_info(doc_id: u32, state: State<AppState>) -> Result<DocumentInfo
         page_count:        entry.page_count,
         file_size_bytes,
         pdf_version,
+        page_size,
         security,
     })
 }
@@ -685,6 +694,38 @@ mod tests {
         let state = empty_state();
         assert_eq!(require_doc(4, &state).err().unwrap(), "document 4 not found");
         assert_eq!(require_doc(5, &state).err().unwrap(), "document 5 not found");
+    }
+
+    #[test]
+    fn document_info_includes_page_size_field() {
+        // Verify that DocumentInfo carries a page_size field. The None path
+        // represents an empty document; the Some path is covered by integration
+        // tests that run against a real pdfium document.
+        let info_no_pages = DocumentInfo {
+            title: None, author: None, subject: None, keywords: None,
+            creator: None, producer: None,
+            creation_date: None, modification_date: None,
+            page_count: 0,
+            file_size_bytes: None,
+            pdf_version: None,
+            page_size: None,
+            security: DocumentSecurity {
+                is_protected: false, revision: None,
+                can_print: "high_quality".to_string(),
+                can_modify: true, can_copy: true,
+                can_annotate: true, can_fill_forms: true, can_assemble: true,
+            },
+        };
+        assert!(info_no_pages.page_size.is_none());
+
+        let info_with_page = DocumentInfo {
+            page_count: 1,
+            page_size: Some(PageSize { width_pts: 612.0, height_pts: 792.0 }),
+            ..info_no_pages
+        };
+        let ps = info_with_page.page_size.unwrap();
+        assert_eq!(ps.width_pts, 612.0);
+        assert_eq!(ps.height_pts, 792.0);
     }
 
     #[test]
