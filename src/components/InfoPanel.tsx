@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
+import { Info } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet,
   SheetContent,
@@ -16,6 +17,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { parsePdfDate, formatBytes } from "@/lib/pdfDate";
+
 
 interface DocumentInfo {
   title:             string | null;
@@ -37,28 +39,32 @@ interface InfoPanelProps {
   onOpenChange(open: boolean): void;
 }
 
-/** A label/value row in a <dl> grid. Null values render "Not set" in muted text. */
 function Row({ label, value }: { label: string; value: string | null }) {
   return (
-    <>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
+    <dl className="flex items-center justify-between">
+      <dt>{label}</dt>
       {value !== null ? (
-        <dd className="text-xs font-medium break-all">{value}</dd>
+        <dd className="text-muted-foreground text-right break-all">{value}</dd>
       ) : (
-        <dd className="text-xs text-muted-foreground/60">Not set</dd>
+        <dd className="text-muted-foreground/60">Not set</dd>
       )}
-    </>
+    </dl>
   );
 }
 
-/** A section label above a group of rows. */
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function RowList({ rows }: { rows: Array<{ label: string; value: string | null }> }) {
   return (
-    <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
-      {children}
-    </p>
+    <div className="flex flex-col gap-2 text-xs">
+      {rows.map((row, i) => (
+        <Fragment key={row.label}>
+          {i > 0 && <Separator />}
+          <Row label={row.label} value={row.value} />
+        </Fragment>
+      ))}
+    </div>
   );
 }
+
 
 function LoadingSkeleton() {
   return (
@@ -94,8 +100,11 @@ export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-80 flex flex-col gap-0 p-0">
-        <SheetHeader className="px-4 py-3 border-b shrink-0">
-          <SheetTitle className="text-sm">Document Info</SheetTitle>
+        <SheetHeader className="px-4 py-3 shrink-0">
+          <SheetTitle className="text-sm flex items-center gap-2">
+            <Info className="size-4 shrink-0" />
+            Document Info
+          </SheetTitle>
         </SheetHeader>
 
         <Tabs defaultValue="info" className="flex flex-col flex-1 min-h-0">
@@ -108,32 +117,34 @@ export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
             {loading ? (
               <LoadingSkeleton />
             ) : (
-              <div className="flex flex-col gap-0">
-                <SectionLabel>General</SectionLabel>
-                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-                  <Row label="Pages"   value={String(info?.page_count ?? "—")} />
-                  <Row label="Size"    value={formatBytes(info?.file_size_bytes ?? null)} />
-                  <Row label="Version" value={info?.pdf_version ?? null} />
-                </dl>
+              <div className="flex flex-col gap-3">
+                <div className="bg-muted/30 rounded-lg p-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">General</p>
+                  <RowList rows={[
+                    { label: "Pages",   value: String(info?.page_count ?? "—") },
+                    { label: "Size",    value: formatBytes(info?.file_size_bytes ?? null) },
+                    { label: "Version", value: info?.pdf_version ?? null },
+                  ]} />
+                </div>
 
-                <Separator className="my-3" />
+                <div className="bg-muted/30 rounded-lg p-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Metadata</p>
+                  <RowList rows={[
+                    { label: "Title",    value: info?.title    ?? null },
+                    { label: "Author",   value: info?.author   ?? null },
+                    { label: "Subject",  value: info?.subject  ?? null },
+                    { label: "Creator",  value: info?.creator  ?? null },
+                    { label: "Producer", value: info?.producer ?? null },
+                  ]} />
+                </div>
 
-                <SectionLabel>Metadata</SectionLabel>
-                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-                  <Row label="Title"    value={info?.title    ?? null} />
-                  <Row label="Author"   value={info?.author   ?? null} />
-                  <Row label="Subject"  value={info?.subject  ?? null} />
-                  <Row label="Creator"  value={info?.creator  ?? null} />
-                  <Row label="Producer" value={info?.producer ?? null} />
-                </dl>
-
-                <Separator className="my-3" />
-
-                <SectionLabel>Dates</SectionLabel>
-                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-                  <Row label="Created"  value={parsePdfDate(info?.creation_date     ?? null)} />
-                  <Row label="Modified" value={parsePdfDate(info?.modification_date ?? null)} />
-                </dl>
+                <div className="bg-muted/30 rounded-lg p-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Dates</p>
+                  <RowList rows={[
+                    { label: "Created",  value: parsePdfDate(info?.creation_date     ?? null) },
+                    { label: "Modified", value: parsePdfDate(info?.modification_date ?? null) },
+                  ]} />
+                </div>
               </div>
             )}
           </TabsContent>
@@ -153,6 +164,7 @@ export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
               </p>
             )}
           </TabsContent>
+
         </Tabs>
       </SheetContent>
     </Sheet>
