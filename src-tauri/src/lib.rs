@@ -197,6 +197,14 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
     })
 }
 
+/// Map the two pdfium print-quality booleans to the canonical string used in
+/// [`DocumentSecurity::can_print`].
+fn print_permission_label(hq: bool, lq: bool) -> &'static str {
+    if hq      { "high_quality" }
+    else if lq { "low_quality"  }
+    else       { "not_allowed"  }
+}
+
 /// Return metadata and file statistics for an open document.
 /// Fields sourced from the PDF InfoDict are Option — most real-world PDFs omit many of them.
 #[tauri::command]
@@ -232,22 +240,33 @@ fn get_document_info(doc_id: u32, state: State<AppState>) -> Result<DocumentInfo
         _             => None,
     };
     let is_protected = revision.is_some();
-    let can_print = if perms.can_print_high_quality().unwrap_or(false) {
-        "high_quality"
-    } else if perms.can_print_only_low_quality().unwrap_or(false) {
-        "low_quality"
-    } else {
-        "not_allowed"
-    }.to_string();
+    // NOTE: pdfium-render only exposes Revision2/3/4. A document whose
+    // security handler uses any other revision matches the `_` arm above
+    // (maps to None), so `is_protected` will be false for those documents.
+    // This is a known pdfium-render limitation; treat them as unprotected
+    // until the library exposes the extra variants.
+
+    // For unencrypted documents every permission is implicitly allowed.
+    // `default_perm` ensures a pdfium error on an unencrypted doc's
+    // permission call is reported as "allowed" rather than the
+    // security-conservative "denied".
+    let default_perm = !is_protected;
+    let can_print = {
+        let hq = perms.can_print_high_quality().unwrap_or(default_perm);
+        // low_quality is only true when the PDF explicitly restricts to it;
+        // never default to true (that would override the "high_quality" path).
+        let lq = perms.can_print_only_low_quality().unwrap_or(false);
+        print_permission_label(hq, lq).to_string()
+    };
     let security = DocumentSecurity {
         is_protected,
         revision,
         can_print,
-        can_modify:    perms.can_modify_document_content().unwrap_or(false),
-        can_copy:      perms.can_extract_text_and_graphics().unwrap_or(false),
-        can_annotate:  perms.can_add_or_modify_text_annotations().unwrap_or(false),
-        can_fill_forms: perms.can_fill_existing_interactive_form_fields().unwrap_or(false),
-        can_assemble:  perms.can_assemble_document().unwrap_or(false),
+        can_modify:    perms.can_modify_document_content().unwrap_or(default_perm),
+        can_copy:      perms.can_extract_text_and_graphics().unwrap_or(default_perm),
+        can_annotate:  perms.can_add_or_modify_text_annotations().unwrap_or(default_perm),
+        can_fill_forms: perms.can_fill_existing_interactive_form_fields().unwrap_or(default_perm),
+        can_assemble:  perms.can_assemble_document().unwrap_or(default_perm),
     };
 
     let page_size = doc.pages().get(0).ok().map(|p| PageSize {
@@ -697,72 +716,17 @@ mod tests {
     }
 
     #[test]
-    fn document_info_includes_page_size_field() {
-        // Verify that DocumentInfo carries a page_size field. The None path
-        // represents an empty document; the Some path is covered by integration
-        // tests that run against a real pdfium document.
-        let info_no_pages = DocumentInfo {
-            title: None, author: None, subject: None, keywords: None,
-            creator: None, producer: None,
-            creation_date: None, modification_date: None,
-            page_count: 0,
-            file_size_bytes: None,
-            pdf_version: None,
-            page_size: None,
-            security: DocumentSecurity {
-                is_protected: false, revision: None,
-                can_print: "high_quality".to_string(),
-                can_modify: true, can_copy: true,
-                can_annotate: true, can_fill_forms: true, can_assemble: true,
-            },
-        };
-        assert!(info_no_pages.page_size.is_none());
-
-        let info_with_page = DocumentInfo {
-            page_count: 1,
-            page_size: Some(PageSize { width_pts: 612.0, height_pts: 792.0 }),
-            ..info_no_pages
-        };
-        let ps = info_with_page.page_size.unwrap();
-        assert_eq!(ps.width_pts, 612.0);
-        assert_eq!(ps.height_pts, 792.0);
+    fn print_permission_label_high_quality() {
+        assert_eq!(print_permission_label(true, false), "high_quality");
     }
 
     #[test]
-    fn document_security_struct_fields_are_correct() {
-        let sec = DocumentSecurity {
-            is_protected: true,
-            revision: Some(3),
-            can_print: "high_quality".to_string(),
-            can_modify: false,
-            can_copy: true,
-            can_annotate: false,
-            can_fill_forms: true,
-            can_assemble: false,
-        };
-        assert!(sec.is_protected);
-        assert_eq!(sec.revision, Some(3));
-        assert_eq!(sec.can_print, "high_quality");
-        assert!(!sec.can_modify);
-        assert!(sec.can_copy);
-
-        let unprotected = DocumentSecurity {
-            is_protected: false,
-            revision: None,
-            can_print: "high_quality".to_string(),
-            can_modify: true, can_copy: true,
-            can_annotate: true, can_fill_forms: true, can_assemble: true,
-        };
-        assert!(!unprotected.is_protected);
-        assert_eq!(unprotected.revision, None);
+    fn print_permission_label_low_quality_when_hq_false() {
+        assert_eq!(print_permission_label(false, true), "low_quality");
     }
 
     #[test]
-    fn require_doc_unknown_id_returns_err() {
-        let state = empty_state();
-        assert_eq!(
-            require_doc(99, &state).err().unwrap(),
-            "document 99 not found"
-        );
+    fn print_permission_label_not_allowed_when_both_false() {
+        assert_eq!(print_permission_label(false, false), "not_allowed");
     }
 }

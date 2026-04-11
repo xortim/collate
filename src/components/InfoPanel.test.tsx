@@ -178,7 +178,7 @@ describe("InfoPanel — Security tab", () => {
     expect(await screen.findByText("None")).toBeInTheDocument();
   });
 
-  it("shows Permissions section only when protected", async () => {
+  it("shows Permissions section for a protected doc", async () => {
     renderPanel();
     await openSecurityTab();
     expect(await screen.findByText("Permissions")).toBeInTheDocument();

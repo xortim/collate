@@ -277,8 +277,10 @@ export function InfoPanel({ docId, filename, open, onOpenChange }: InfoPanelProp
               <LoadingSkeleton />
             ) : error ? (
               <p className="text-sm text-destructive text-center mt-8">Could not load document info.</p>
+            ) : info == null ? (
+              <LoadingSkeleton />
             ) : (
-              <SecurityContent security={info!.security} />
+              <SecurityContent security={info.security} />
             )}
           </TabsContent>
 
