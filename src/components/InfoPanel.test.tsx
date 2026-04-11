@@ -20,6 +20,16 @@ const FULL_INFO = {
   page_count: 12,
   file_size_bytes: 393216,
   pdf_version: "PDF 1.7",
+  security: {
+    is_protected: true,
+    revision: 3,
+    can_print: "high_quality",
+    can_modify: false,
+    can_copy: true,
+    can_annotate: false,
+    can_fill_forms: true,
+    can_assemble: false,
+  },
 };
 
 const NULL_INFO = {
@@ -34,6 +44,16 @@ const NULL_INFO = {
   page_count: 5,
   file_size_bytes: null,
   pdf_version: null,
+  security: {
+    is_protected: false,
+    revision: null,
+    can_print: "high_quality",
+    can_modify: true,
+    can_copy: true,
+    can_annotate: true,
+    can_fill_forms: true,
+    can_assemble: true,
+  },
 };
 
 function renderPanel(overrides: Partial<typeof FULL_INFO> = {}, open = true) {
@@ -111,6 +131,56 @@ describe("InfoPanel — Keywords tab", () => {
     render(<InfoPanel docId={1} open={true} onOpenChange={vi.fn()} />);
     await userEvent.click(await screen.findByRole("tab", { name: /keywords/i }));
     expect(await screen.findByText(/no keywords defined/i)).toBeInTheDocument();
+  });
+});
+
+describe("InfoPanel — Security tab", () => {
+  async function openSecurityTab() {
+    await userEvent.click(await screen.findByRole("tab", { name: /security/i }));
+  }
+
+  it("shows 'Encrypted (Rev. 3)' for a protected doc", async () => {
+    renderPanel();
+    await openSecurityTab();
+    expect(await screen.findByText("Encrypted (Rev. 3)")).toBeInTheDocument();
+  });
+
+  it("shows 'None' for an unprotected doc", async () => {
+    vi.mocked(invoke).mockResolvedValue(NULL_INFO);
+    render(<InfoPanel docId={1} open={true} onOpenChange={vi.fn()} />);
+    await openSecurityTab();
+    expect(await screen.findByText("None")).toBeInTheDocument();
+  });
+
+  it("shows Permissions section only when protected", async () => {
+    renderPanel();
+    await openSecurityTab();
+    expect(await screen.findByText("Permissions")).toBeInTheDocument();
+  });
+
+  it("shows Permissions section for unprotected doc", async () => {
+    vi.mocked(invoke).mockResolvedValue(NULL_INFO);
+    render(<InfoPanel docId={1} open={true} onOpenChange={vi.fn()} />);
+    await openSecurityTab();
+    expect(await screen.findByText("Permissions")).toBeInTheDocument();
+  });
+
+  it("shows 'Allowed' for a permitted action", async () => {
+    renderPanel(); // can_copy: true
+    await openSecurityTab();
+    expect(await screen.findAllByText("Allowed")).not.toHaveLength(0);
+  });
+
+  it("shows 'Not allowed' for a denied action", async () => {
+    renderPanel(); // can_modify: false
+    await openSecurityTab();
+    expect(await screen.findAllByText("Not allowed")).not.toHaveLength(0);
+  });
+
+  it("shows 'Low quality only' for low-quality print permission", async () => {
+    renderPanel({ security: { ...FULL_INFO.security, can_print: "low_quality" } });
+    await openSecurityTab();
+    expect(await screen.findByText("Low quality only")).toBeInTheDocument();
   });
 });
 

@@ -75,6 +75,21 @@ struct DocumentManifest {
     can_redo: bool,
 }
 
+/// PDF security/permissions returned as part of `get_document_info`.
+/// `can_print` is "high_quality" | "low_quality" | "not_allowed".
+/// Permission fields are only meaningful when `is_protected` is true.
+#[derive(Serialize, Clone)]
+struct DocumentSecurity {
+    is_protected:  bool,
+    revision:      Option<u8>,   // 2, 3, or 4; None when unprotected
+    can_print:     String,       // "high_quality" | "low_quality" | "not_allowed"
+    can_modify:    bool,
+    can_copy:      bool,
+    can_annotate:  bool,
+    can_fill_forms: bool,
+    can_assemble:  bool,
+}
+
 /// PDF metadata and file statistics returned by `get_document_info`.
 /// All string fields are Option<String> — pdfium returns None for absent InfoDict entries,
 /// which is common (many PDFs omit most fields).
@@ -91,6 +106,7 @@ struct DocumentInfo {
     page_count:        usize,
     file_size_bytes:   Option<u64>,     // None if stat() fails (e.g. unsaved temp doc)
     pdf_version:       Option<String>,  // e.g. "PDF 1.7"; None if Unset
+    security:          DocumentSecurity,
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +220,33 @@ fn get_document_info(doc_id: u32, state: State<AppState>) -> Result<DocumentInfo
         PdfDocumentVersion::Other(n) => Some(format!("PDF (version {})", n)),
     };
 
+    let perms = doc.permissions();
+    use PdfSecurityHandlerRevision::*;
+    let revision = match perms.security_handler_revision() {
+        Ok(Revision2) => Some(2u8),
+        Ok(Revision3) => Some(3u8),
+        Ok(Revision4) => Some(4u8),
+        _             => None,
+    };
+    let is_protected = revision.is_some();
+    let can_print = if perms.can_print_high_quality().unwrap_or(false) {
+        "high_quality"
+    } else if perms.can_print_only_low_quality().unwrap_or(false) {
+        "low_quality"
+    } else {
+        "not_allowed"
+    }.to_string();
+    let security = DocumentSecurity {
+        is_protected,
+        revision,
+        can_print,
+        can_modify:    perms.can_modify_document_content().unwrap_or(false),
+        can_copy:      perms.can_extract_text_and_graphics().unwrap_or(false),
+        can_annotate:  perms.can_add_or_modify_text_annotations().unwrap_or(false),
+        can_fill_forms: perms.can_fill_existing_interactive_form_fields().unwrap_or(false),
+        can_assemble:  perms.can_assemble_document().unwrap_or(false),
+    };
+
     Ok(DocumentInfo {
         title:             meta.get(Title).map(|t| t.value().to_string()),
         author:            meta.get(Author).map(|t| t.value().to_string()),
@@ -216,6 +259,7 @@ fn get_document_info(doc_id: u32, state: State<AppState>) -> Result<DocumentInfo
         page_count:        entry.page_count,
         file_size_bytes,
         pdf_version,
+        security,
     })
 }
 
@@ -641,6 +685,35 @@ mod tests {
         let state = empty_state();
         assert_eq!(require_doc(4, &state).err().unwrap(), "document 4 not found");
         assert_eq!(require_doc(5, &state).err().unwrap(), "document 5 not found");
+    }
+
+    #[test]
+    fn document_security_struct_fields_are_correct() {
+        let sec = DocumentSecurity {
+            is_protected: true,
+            revision: Some(3),
+            can_print: "high_quality".to_string(),
+            can_modify: false,
+            can_copy: true,
+            can_annotate: false,
+            can_fill_forms: true,
+            can_assemble: false,
+        };
+        assert!(sec.is_protected);
+        assert_eq!(sec.revision, Some(3));
+        assert_eq!(sec.can_print, "high_quality");
+        assert!(!sec.can_modify);
+        assert!(sec.can_copy);
+
+        let unprotected = DocumentSecurity {
+            is_protected: false,
+            revision: None,
+            can_print: "high_quality".to_string(),
+            can_modify: true, can_copy: true,
+            can_annotate: true, can_fill_forms: true, can_assemble: true,
+        };
+        assert!(!unprotected.is_protected);
+        assert_eq!(unprotected.revision, None);
     }
 
     #[test]

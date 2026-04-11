@@ -19,6 +19,17 @@ import {
 import { parsePdfDate, formatBytes } from "@/lib/pdfDate";
 
 
+interface DocumentSecurity {
+  is_protected:  boolean;
+  revision:      number | null;
+  can_print:     "high_quality" | "low_quality" | "not_allowed";
+  can_modify:    boolean;
+  can_copy:      boolean;
+  can_annotate:  boolean;
+  can_fill_forms: boolean;
+  can_assemble:  boolean;
+}
+
 interface DocumentInfo {
   title:             string | null;
   author:            string | null;
@@ -31,6 +42,7 @@ interface DocumentInfo {
   page_count:        number;
   file_size_bytes:   number | null;
   pdf_version:       string | null;
+  security:          DocumentSecurity;
 }
 
 interface InfoPanelProps {
@@ -65,6 +77,38 @@ function RowList({ rows }: { rows: Array<{ label: string; value: string | null }
   );
 }
 
+
+function SecurityContent({ security }: { security: DocumentSecurity }) {
+  const encryptionStatus = security.is_protected
+    ? `Encrypted (Rev. ${security.revision})`
+    : "None";
+
+  const printLabel =
+    security.can_print === "high_quality" ? "Allowed"
+    : security.can_print === "low_quality" ? "Low quality only"
+    : "Not allowed";
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="bg-muted/30 rounded-lg p-3">
+        <p className="text-xs font-medium text-muted-foreground mb-2">Encryption</p>
+        <RowList rows={[{ label: "Protection", value: encryptionStatus }]} />
+      </div>
+
+      <div className="bg-muted/30 rounded-lg p-3">
+        <p className="text-xs font-medium text-muted-foreground mb-2">Permissions</p>
+        <RowList rows={[
+          { label: "Printing",    value: printLabel },
+          { label: "Modify",      value: security.can_modify     ? "Allowed" : "Not allowed" },
+          { label: "Copy text",   value: security.can_copy       ? "Allowed" : "Not allowed" },
+          { label: "Annotations", value: security.can_annotate   ? "Allowed" : "Not allowed" },
+          { label: "Fill forms",  value: security.can_fill_forms ? "Allowed" : "Not allowed" },
+          { label: "Assemble",    value: security.can_assemble   ? "Allowed" : "Not allowed" },
+        ]} />
+      </div>
+    </div>
+  );
+}
 
 function LoadingSkeleton() {
   return (
@@ -114,6 +158,7 @@ export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
           <TabsList className="mx-4 mt-3 shrink-0 justify-start w-auto">
             <TabsTrigger value="info">Info</TabsTrigger>
             <TabsTrigger value="keywords">Keywords</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
 
           <TabsContent value="info" className="flex-1 overflow-y-auto px-4 py-3 mt-0">
@@ -169,6 +214,16 @@ export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
               <p className="text-sm text-muted-foreground text-center mt-8">
                 No keywords defined.
               </p>
+            )}
+          </TabsContent>
+
+          <TabsContent value="security" className="flex-1 overflow-y-auto px-4 py-3 mt-0">
+            {loading ? (
+              <LoadingSkeleton />
+            ) : error ? (
+              <p className="text-sm text-destructive text-center mt-8">Could not load document info.</p>
+            ) : (
+              <SecurityContent security={info!.security} />
             )}
           </TabsContent>
 
