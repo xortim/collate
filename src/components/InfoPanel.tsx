@@ -17,6 +17,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { parsePdfDate, formatBytes } from "@/lib/pdfDate";
+import { PanelSection } from "@/components/PanelSection";
 
 
 interface DocumentSecurity {
@@ -90,13 +91,11 @@ function SecurityContent({ security }: { security: DocumentSecurity }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="bg-muted/30 rounded-lg p-3">
-        <p className="text-xs font-medium text-muted-foreground mb-2">Encryption</p>
+      <PanelSection heading="Encryption">
         <RowList rows={[{ label: "Protection", value: encryptionStatus }]} />
-      </div>
+      </PanelSection>
 
-      <div className="bg-muted/30 rounded-lg p-3">
-        <p className="text-xs font-medium text-muted-foreground mb-2">Permissions</p>
+      <PanelSection heading="Permissions">
         <RowList rows={[
           { label: "Printing",    value: printLabel },
           { label: "Modify",      value: security.can_modify     ? "Allowed" : "Not allowed" },
@@ -105,7 +104,7 @@ function SecurityContent({ security }: { security: DocumentSecurity }) {
           { label: "Fill forms",  value: security.can_fill_forms ? "Allowed" : "Not allowed" },
           { label: "Assemble",    value: security.can_assemble   ? "Allowed" : "Not allowed" },
         ]} />
-      </div>
+      </PanelSection>
     </div>
   );
 }
@@ -168,17 +167,15 @@ export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
               <p className="text-sm text-destructive text-center mt-8">Could not load document info.</p>
             ) : (
               <div className="flex flex-col gap-3">
-                <div className="bg-muted/30 rounded-lg p-3">
-                  <p className="text-xs font-medium text-muted-foreground mb-2">General</p>
+                <PanelSection heading="General">
                   <RowList rows={[
                     { label: "Pages",   value: String(info?.page_count ?? "—") },
                     { label: "Size",    value: formatBytes(info?.file_size_bytes ?? null) },
                     { label: "Version", value: info?.pdf_version ?? null },
                   ]} />
-                </div>
+                </PanelSection>
 
-                <div className="bg-muted/30 rounded-lg p-3">
-                  <p className="text-xs font-medium text-muted-foreground mb-2">Metadata</p>
+                <PanelSection heading="Metadata">
                   <RowList rows={[
                     { label: "Title",    value: info?.title    ?? null },
                     { label: "Author",   value: info?.author   ?? null },
@@ -186,15 +183,14 @@ export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
                     { label: "Creator",  value: info?.creator  ?? null },
                     { label: "Producer", value: info?.producer ?? null },
                   ]} />
-                </div>
+                </PanelSection>
 
-                <div className="bg-muted/30 rounded-lg p-3">
-                  <p className="text-xs font-medium text-muted-foreground mb-2">Dates</p>
+                <PanelSection heading="Dates">
                   <RowList rows={[
                     { label: "Created",  value: parsePdfDate(info?.creation_date     ?? null) },
                     { label: "Modified", value: parsePdfDate(info?.modification_date ?? null) },
                   ]} />
-                </div>
+                </PanelSection>
               </div>
             )}
           </TabsContent>
