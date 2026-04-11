@@ -238,6 +238,7 @@ function App() {
     const unlistenDisplay = listen<string>("menu-display", (e) => {
       useAppStore.getState().setPageDisplay(e.payload as PageDisplay);
     });
+    const unlistenDocInfo   = listen<void>("menu-doc-info",   () => useAppStore.getState().toggleInfoPanel());
     const unlistenReportBug = listen<void>("menu-report-bug", () => {
       setBugReportOpen(true);
     });
@@ -267,6 +268,7 @@ function App() {
       unlistenMerge.then((fn) => fn());
       unlistenImport.then((fn) => fn());
       unlistenDisplay.then((fn) => fn());
+      unlistenDocInfo.then((fn) => fn());
       unlistenReportBug.then((fn) => fn());
       unlistenSave.then((fn) => fn());
       unlistenSaveAs.then((fn) => fn());

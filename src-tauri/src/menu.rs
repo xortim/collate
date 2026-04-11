@@ -25,6 +25,7 @@ use tauri::{
 ///   "display-continuous" — View → Page Display → Continuous Scroll
 ///   "display-single"     — View → Page Display → Single Page
 ///   "display-spread"     — View → Page Display → Two-Page Spread
+///   "doc-info"           — View → Document Info
 ///   "zoom-in"            — View → Zoom In
 ///   "zoom-out"           — View → Zoom Out
 ///   "zoom-fit-width"     — View → Fit Width
@@ -100,6 +101,10 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let display_menu       = Submenu::with_items(app, "Page Display", true, &[&display_continuous, &display_single, &display_spread])?;
     let sep_display        = PredefinedMenuItem::separator(app)?;
 
+    // ── View → Document Info ───────────────────────────────────────────────
+    let doc_info   = MenuItem::with_id(app, "doc-info", "Document Info", false, Some("CmdOrCtrl+I"))?;
+    let sep_info   = PredefinedMenuItem::separator(app)?;
+
     // ── View → Zoom ────────────────────────────────────────────────────────
     let zoom_in   = MenuItem::with_id(app, "zoom-in",       "Zoom In",   false, Some("CmdOrCtrl+="))?;
     let zoom_out  = MenuItem::with_id(app, "zoom-out",      "Zoom Out",  false, Some("CmdOrCtrl+-"))?;
@@ -116,7 +121,7 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         app,
         "View",
         true,
-        &[&display_menu, &sep_display, &zoom_menu, &sep_zoom, &appearance],
+        &[&display_menu, &sep_display, &doc_info, &sep_info, &zoom_menu, &sep_zoom, &appearance],
     )?;
 
     // ── Help (required by macOS HIG) ───────────────────────────────────────

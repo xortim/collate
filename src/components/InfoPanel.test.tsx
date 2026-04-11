@@ -51,6 +51,12 @@ describe("InfoPanel — loading state", () => {
     render(<InfoPanel docId={1} open={true} onOpenChange={vi.fn()} />);
     expect(document.querySelectorAll("[data-slot=skeleton]").length).toBeGreaterThan(0);
   });
+
+  it("does not call invoke when open is false", () => {
+    vi.mocked(invoke).mockResolvedValue(FULL_INFO);
+    render(<InfoPanel docId={1} open={false} onOpenChange={vi.fn()} />);
+    expect(vi.mocked(invoke)).not.toHaveBeenCalled();
+  });
 });
 
 describe("InfoPanel — Info tab", () => {
@@ -113,5 +119,11 @@ describe("InfoPanel — error state", () => {
     vi.mocked(invoke).mockRejectedValue(new Error("not found"));
     render(<InfoPanel docId={1} open={true} onOpenChange={vi.fn()} />);
     expect(await screen.findByText(/document info/i)).toBeInTheDocument();
+  });
+
+  it("shows error message in Info tab when invoke rejects", async () => {
+    vi.mocked(invoke).mockRejectedValue(new Error("not found"));
+    render(<InfoPanel docId={1} open={true} onOpenChange={vi.fn()} />);
+    expect(await screen.findByText(/could not load document info/i)).toBeInTheDocument();
   });
 });

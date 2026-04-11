@@ -41,12 +41,12 @@ interface InfoPanelProps {
 
 function Row({ label, value }: { label: string; value: string | null }) {
   return (
-    <dl className="flex items-center justify-between">
-      <dt>{label}</dt>
+    <dl className="flex items-start justify-between">
+      <dt className="shrink-0 pr-4">{label}</dt>
       {value !== null ? (
         <dd className="text-muted-foreground text-right break-all">{value}</dd>
       ) : (
-        <dd className="text-muted-foreground/60">Not set</dd>
+        <dd className="text-muted-foreground/60 shrink-0">Not set</dd>
       )}
     </dl>
   );
@@ -83,15 +83,18 @@ function LoadingSkeleton() {
 export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
   const [info, setInfo] = useState<DocumentInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
+    if (!open) return;
     setLoading(true);
     setInfo(null);
+    setError(false);
     invoke<DocumentInfo>("get_document_info", { docId })
       .then(setInfo)
-      .catch(() => setInfo(null))
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [docId]);
+  }, [docId, open]);
 
   const keywords = info?.keywords
     ? info.keywords.split(/[,;]+/).map((k) => k.trim()).filter(Boolean)
@@ -116,6 +119,8 @@ export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
           <TabsContent value="info" className="flex-1 overflow-y-auto px-4 py-3 mt-0">
             {loading ? (
               <LoadingSkeleton />
+            ) : error ? (
+              <p className="text-sm text-destructive text-center mt-8">Could not load document info.</p>
             ) : (
               <div className="flex flex-col gap-3">
                 <div className="bg-muted/30 rounded-lg p-3">
@@ -152,6 +157,8 @@ export function InfoPanel({ docId, open, onOpenChange }: InfoPanelProps) {
           <TabsContent value="keywords" className="flex-1 overflow-y-auto px-4 py-3 mt-0">
             {loading ? (
               <LoadingSkeleton />
+            ) : error ? (
+              <p className="text-sm text-destructive text-center mt-8">Could not load document info.</p>
             ) : keywords.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {keywords.map((kw) => (

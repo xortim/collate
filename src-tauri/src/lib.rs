@@ -183,6 +183,8 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
 #[tauri::command]
 fn get_document_info(doc_id: u32, state: State<AppState>) -> Result<DocumentInfo, String> {
     let entry = require_doc(doc_id, &state)?;
+    // Stat the file before locking the doc — fs I/O inside a Mutex is a code smell.
+    let file_size_bytes = std::fs::metadata(&entry.path).map(|m| m.len()).ok();
     let doc = entry.doc.lock().unwrap();
     let meta = doc.metadata();
     use PdfDocumentMetadataTagType::*;
@@ -201,8 +203,6 @@ fn get_document_info(doc_id: u32, state: State<AppState>) -> Result<DocumentInfo
         PdfDocumentVersion::Pdf2_0   => Some("PDF 2.0".to_string()),
         PdfDocumentVersion::Other(n) => Some(format!("PDF (version {})", n)),
     };
-
-    let file_size_bytes = std::fs::metadata(&entry.path).map(|m| m.len()).ok();
 
     Ok(DocumentInfo {
         title:             meta.get(Title).map(|t| t.value().to_string()),
@@ -351,6 +351,7 @@ const PDF_MENU_IDS: &[&str] = &[
     "close", "print", "undo", "redo", "select-all", "find",
     "save", "save-as",
     "zoom-in", "zoom-out", "zoom-fit-width",
+    "doc-info",
     // Document menu
     "rotate-cw", "rotate-cw-all", "rotate-ccw", "rotate-ccw-all",
     "split", "merge", "import-pages",
@@ -470,6 +471,7 @@ pub fn run() {
                 "zoom-in"        => { let _ = app.emit("menu-zoom-in",        ()); }
                 "zoom-out"       => { let _ = app.emit("menu-zoom-out",       ()); }
                 "zoom-fit-width" => { let _ = app.emit("menu-zoom-fit-width", ()); }
+                "doc-info"       => { let _ = app.emit("menu-doc-info",       ()); }
                 "theme-system" => { set_theme_checks(app, "system"); let _ = app.emit("menu-theme", "system"); }
                 "theme-light"  => { set_theme_checks(app, "light");  let _ = app.emit("menu-theme", "light"); }
                 "theme-dark"   => { set_theme_checks(app, "dark");   let _ = app.emit("menu-theme", "dark"); }
@@ -642,7 +644,7 @@ mod tests {
     }
 
     #[test]
-    fn get_document_info_unknown_doc_returns_err() {
+    fn require_doc_unknown_id_returns_err() {
         let state = empty_state();
         assert_eq!(
             require_doc(99, &state).err().unwrap(),
