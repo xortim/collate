@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import { BugIcon } from "lucide-react";
 import { BugReportDialog } from "./components/BugReportDialog";
+import { InfoPanel } from "./components/InfoPanel";
 import { ShortcutOverlay } from "./components/ShortcutOverlay";
 import { EmptyState } from "./components/EmptyState";
 import { PageViewer, PageViewerHandle } from "./components/PageViewer";
@@ -51,6 +52,9 @@ function App() {
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const isDirty = useAppStore((s) => s.isDirty);
+  const infoPanelOpen = useAppStore((s) => s.infoPanelOpen);
+  const setInfoPanelOpen = useAppStore((s) => s.setInfoPanelOpen);
+  const toggleInfoPanel = useAppStore((s) => s.toggleInfoPanel);
 
   // Apply theme (dark class on <html>) and keep it in sync with OS changes
   useTheme();
@@ -74,6 +78,7 @@ function App() {
     useAppStore.getState().setActivePage(0);
     useAppStore.getState().clearSelection();
     useAppStore.getState().setIsDirty(false);
+    useAppStore.getState().setInfoPanelOpen(false);
   }
 
   function showError(message: string) {
@@ -233,6 +238,7 @@ function App() {
     const unlistenDisplay = listen<string>("menu-display", (e) => {
       useAppStore.getState().setPageDisplay(e.payload as PageDisplay);
     });
+    const unlistenDocInfo   = listen<void>("menu-doc-info",   () => useAppStore.getState().toggleInfoPanel());
     const unlistenReportBug = listen<void>("menu-report-bug", () => {
       setBugReportOpen(true);
     });
@@ -262,6 +268,7 @@ function App() {
       unlistenMerge.then((fn) => fn());
       unlistenImport.then((fn) => fn());
       unlistenDisplay.then((fn) => fn());
+      unlistenDocInfo.then((fn) => fn());
       unlistenReportBug.then((fn) => fn());
       unlistenSave.then((fn) => fn());
       unlistenSaveAs.then((fn) => fn());
@@ -306,6 +313,8 @@ function App() {
           onSave={handleSave}
           onUndo={handleUndo}
           onRedo={handleRedo}
+          infoPanelOpen={infoPanelOpen}
+          onToggleInfo={toggleInfoPanel}
         />
 
         <Separator />
@@ -324,6 +333,15 @@ function App() {
 
         <StatusBar pageCount={manifest?.page_count} />
       </SidebarInset>
+
+      {manifest && (
+        <InfoPanel
+          docId={manifest.doc_id}
+          filename={manifest.filename}
+          open={infoPanelOpen}
+          onOpenChange={setInfoPanelOpen}
+        />
+      )}
 
       <ShortcutOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
 

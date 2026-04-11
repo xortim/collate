@@ -33,6 +33,8 @@ struct DocumentEntry {
     doc: Mutex<PdfDocument<'static>>,
     page_count: usize,
     filename: String,
+    /// Full filesystem path — needed by get_document_info for file size.
+    path: String,
     // Keep bytes alive — pdfium's FPDF_LoadMemDocument holds a pointer into
     // this buffer for the lifetime of the document.
     _bytes: Arc<Vec<u8>>,
@@ -71,6 +73,43 @@ struct DocumentManifest {
     /// Whether a redo step is available. Always false until the command stack
     /// is implemented in Phase 3.
     can_redo: bool,
+}
+
+/// PDF security/permissions returned as part of `get_document_info`.
+/// `can_print` is "high_quality" | "low_quality" | "not_allowed".
+/// Permission fields are only meaningful when `is_protected` is true.
+#[derive(Serialize, Clone)]
+struct DocumentSecurity {
+    is_protected:  bool,
+    revision:      Option<u8>,   // 2, 3, or 4; None when unprotected
+    can_print:     String,       // "high_quality" | "low_quality" | "not_allowed"
+    can_modify:    bool,
+    can_copy:      bool,
+    can_annotate:  bool,
+    can_fill_forms: bool,
+    can_assemble:  bool,
+}
+
+/// PDF metadata and file statistics returned by `get_document_info`.
+/// All string fields are Option<String> — pdfium returns None for absent InfoDict entries,
+/// which is common (many PDFs omit most fields).
+#[derive(Serialize, Clone)]
+struct DocumentInfo {
+    title:             Option<String>,
+    author:            Option<String>,
+    subject:           Option<String>,
+    keywords:          Option<String>,  // raw comma/semicolon-separated string
+    creator:           Option<String>,
+    producer:          Option<String>,
+    creation_date:     Option<String>,  // raw PDF date, e.g. "D:20230415143022+05'30'"
+    modification_date: Option<String>,
+    page_count:        usize,
+    file_size_bytes:   Option<u64>,     // None if stat() fails (e.g. unsaved temp doc)
+    pdf_version:       Option<String>,  // e.g. "PDF 1.7"; None if Unset
+    /// Dimensions of the first page in PDF points (1 pt = 1/72 inch).
+    /// None only when the document has zero pages.
+    page_size:         Option<PageSize>,
+    security:          DocumentSecurity,
 }
 
 // ---------------------------------------------------------------------------
@@ -142,6 +181,7 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
             doc: Mutex::new(doc),
             page_count,
             filename: filename.clone(),
+            path: path.clone(),
             _bytes: pdf_bytes,
         }),
     );
@@ -154,6 +194,100 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
         page_sizes,
         can_undo: false,
         can_redo: false,
+    })
+}
+
+/// Map the two pdfium print-quality booleans to the canonical string used in
+/// [`DocumentSecurity::can_print`].
+fn print_permission_label(hq: bool, lq: bool) -> &'static str {
+    if hq      { "high_quality" }
+    else if lq { "low_quality"  }
+    else       { "not_allowed"  }
+}
+
+/// Return metadata and file statistics for an open document.
+/// Fields sourced from the PDF InfoDict are Option — most real-world PDFs omit many of them.
+#[tauri::command]
+fn get_document_info(doc_id: u32, state: State<AppState>) -> Result<DocumentInfo, String> {
+    let entry = require_doc(doc_id, &state)?;
+    // Stat the file before locking the doc — fs I/O inside a Mutex is a code smell.
+    let file_size_bytes = std::fs::metadata(&entry.path).map(|m| m.len()).ok();
+    let doc = entry.doc.lock().unwrap();
+    let meta = doc.metadata();
+    use PdfDocumentMetadataTagType::*;
+
+    // Match on the version enum variants directly — as_pdfium() is pub(crate).
+    let pdf_version = match doc.version() {
+        PdfDocumentVersion::Unset    => None,
+        PdfDocumentVersion::Pdf1_0   => Some("PDF 1.0".to_string()),
+        PdfDocumentVersion::Pdf1_1   => Some("PDF 1.1".to_string()),
+        PdfDocumentVersion::Pdf1_2   => Some("PDF 1.2".to_string()),
+        PdfDocumentVersion::Pdf1_3   => Some("PDF 1.3".to_string()),
+        PdfDocumentVersion::Pdf1_4   => Some("PDF 1.4".to_string()),
+        PdfDocumentVersion::Pdf1_5   => Some("PDF 1.5".to_string()),
+        PdfDocumentVersion::Pdf1_6   => Some("PDF 1.6".to_string()),
+        PdfDocumentVersion::Pdf1_7   => Some("PDF 1.7".to_string()),
+        PdfDocumentVersion::Pdf2_0   => Some("PDF 2.0".to_string()),
+        PdfDocumentVersion::Other(n) => Some(format!("PDF (version {})", n)),
+    };
+
+    let perms = doc.permissions();
+    use PdfSecurityHandlerRevision::*;
+    let revision = match perms.security_handler_revision() {
+        Ok(Revision2) => Some(2u8),
+        Ok(Revision3) => Some(3u8),
+        Ok(Revision4) => Some(4u8),
+        _             => None,
+    };
+    let is_protected = revision.is_some();
+    // NOTE: pdfium-render only exposes Revision2/3/4. A document whose
+    // security handler uses any other revision matches the `_` arm above
+    // (maps to None), so `is_protected` will be false for those documents.
+    // This is a known pdfium-render limitation; treat them as unprotected
+    // until the library exposes the extra variants.
+
+    // For unencrypted documents every permission is implicitly allowed.
+    // `default_perm` ensures a pdfium error on an unencrypted doc's
+    // permission call is reported as "allowed" rather than the
+    // security-conservative "denied".
+    let default_perm = !is_protected;
+    let can_print = {
+        let hq = perms.can_print_high_quality().unwrap_or(default_perm);
+        // low_quality is only true when the PDF explicitly restricts to it;
+        // never default to true (that would override the "high_quality" path).
+        let lq = perms.can_print_only_low_quality().unwrap_or(false);
+        print_permission_label(hq, lq).to_string()
+    };
+    let security = DocumentSecurity {
+        is_protected,
+        revision,
+        can_print,
+        can_modify:    perms.can_modify_document_content().unwrap_or(default_perm),
+        can_copy:      perms.can_extract_text_and_graphics().unwrap_or(default_perm),
+        can_annotate:  perms.can_add_or_modify_text_annotations().unwrap_or(default_perm),
+        can_fill_forms: perms.can_fill_existing_interactive_form_fields().unwrap_or(default_perm),
+        can_assemble:  perms.can_assemble_document().unwrap_or(default_perm),
+    };
+
+    let page_size = doc.pages().get(0).ok().map(|p| PageSize {
+        width_pts:  p.width().value  as f64,
+        height_pts: p.height().value as f64,
+    });
+
+    Ok(DocumentInfo {
+        title:             meta.get(Title).map(|t| t.value().to_string()),
+        author:            meta.get(Author).map(|t| t.value().to_string()),
+        subject:           meta.get(Subject).map(|t| t.value().to_string()),
+        keywords:          meta.get(Keywords).map(|t| t.value().to_string()),
+        creator:           meta.get(Creator).map(|t| t.value().to_string()),
+        producer:          meta.get(Producer).map(|t| t.value().to_string()),
+        creation_date:     meta.get(CreationDate).map(|t| t.value().to_string()),
+        modification_date: meta.get(ModificationDate).map(|t| t.value().to_string()),
+        page_count:        entry.page_count,
+        file_size_bytes,
+        pdf_version,
+        page_size,
+        security,
     })
 }
 
@@ -289,6 +423,7 @@ const PDF_MENU_IDS: &[&str] = &[
     "close", "print", "undo", "redo", "select-all", "find",
     "save", "save-as",
     "zoom-in", "zoom-out", "zoom-fit-width",
+    "doc-info",
     // Document menu
     "rotate-cw", "rotate-cw-all", "rotate-ccw", "rotate-ccw-all",
     "split", "merge", "import-pages",
@@ -408,6 +543,7 @@ pub fn run() {
                 "zoom-in"        => { let _ = app.emit("menu-zoom-in",        ()); }
                 "zoom-out"       => { let _ = app.emit("menu-zoom-out",       ()); }
                 "zoom-fit-width" => { let _ = app.emit("menu-zoom-fit-width", ()); }
+                "doc-info"       => { let _ = app.emit("menu-doc-info",       ()); }
                 "theme-system" => { set_theme_checks(app, "system"); let _ = app.emit("menu-theme", "system"); }
                 "theme-light"  => { set_theme_checks(app, "light");  let _ = app.emit("menu-theme", "light"); }
                 "theme-dark"   => { set_theme_checks(app, "dark");   let _ = app.emit("menu-theme", "dark"); }
@@ -495,6 +631,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_document,
             close_document,
+            get_document_info,
             set_menu_theme,
             set_pdf_menus_enabled,
             save_document,
@@ -576,5 +713,20 @@ mod tests {
         let state = empty_state();
         assert_eq!(require_doc(4, &state).err().unwrap(), "document 4 not found");
         assert_eq!(require_doc(5, &state).err().unwrap(), "document 5 not found");
+    }
+
+    #[test]
+    fn print_permission_label_high_quality() {
+        assert_eq!(print_permission_label(true, false), "high_quality");
+    }
+
+    #[test]
+    fn print_permission_label_low_quality_when_hq_false() {
+        assert_eq!(print_permission_label(false, true), "low_quality");
+    }
+
+    #[test]
+    fn print_permission_label_not_allowed_when_both_false() {
+        assert_eq!(print_permission_label(false, false), "not_allowed");
     }
 }

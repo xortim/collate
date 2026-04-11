@@ -37,6 +37,7 @@ function buildSections(): Section[] {
     {
       label: "View",
       rows: [
+        { action: "Document Info",  keys: [`${mod}I`] },
         { action: "Zoom In",        keys: [`${mod}+`] },
         { action: "Zoom Out",       keys: [`${mod}−`] },
         { action: "Fit Width",      keys: [`${mod}0`] },
