@@ -105,3 +105,39 @@ describe("selectAll", () => {
     expect(pages).toEqual([0, 1]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// infoPanelOpen
+// ---------------------------------------------------------------------------
+
+describe("infoPanelOpen", () => {
+  beforeEach(() => {
+    useAppStore.setState({ infoPanelOpen: false });
+  });
+
+  it("starts false", () => {
+    expect(useAppStore.getState().infoPanelOpen).toBe(false);
+  });
+
+  it("toggleInfoPanel() sets it to true", () => {
+    useAppStore.getState().toggleInfoPanel();
+    expect(useAppStore.getState().infoPanelOpen).toBe(true);
+  });
+
+  it("toggleInfoPanel() called twice returns to false", () => {
+    useAppStore.getState().toggleInfoPanel();
+    useAppStore.getState().toggleInfoPanel();
+    expect(useAppStore.getState().infoPanelOpen).toBe(false);
+  });
+
+  it("setInfoPanelOpen(true) sets it true", () => {
+    useAppStore.getState().setInfoPanelOpen(true);
+    expect(useAppStore.getState().infoPanelOpen).toBe(true);
+  });
+
+  it("setInfoPanelOpen(false) sets it false", () => {
+    useAppStore.setState({ infoPanelOpen: true });
+    useAppStore.getState().setInfoPanelOpen(false);
+    expect(useAppStore.getState().infoPanelOpen).toBe(false);
+  });
+});

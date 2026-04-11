@@ -33,6 +33,8 @@ struct DocumentEntry {
     doc: Mutex<PdfDocument<'static>>,
     page_count: usize,
     filename: String,
+    /// Full filesystem path — needed by get_document_info for file size.
+    path: String,
     // Keep bytes alive — pdfium's FPDF_LoadMemDocument holds a pointer into
     // this buffer for the lifetime of the document.
     _bytes: Arc<Vec<u8>>,
@@ -71,6 +73,24 @@ struct DocumentManifest {
     /// Whether a redo step is available. Always false until the command stack
     /// is implemented in Phase 3.
     can_redo: bool,
+}
+
+/// PDF metadata and file statistics returned by `get_document_info`.
+/// All string fields are Option<String> — pdfium returns None for absent InfoDict entries,
+/// which is common (many PDFs omit most fields).
+#[derive(Serialize, Clone)]
+struct DocumentInfo {
+    title:             Option<String>,
+    author:            Option<String>,
+    subject:           Option<String>,
+    keywords:          Option<String>,  // raw comma/semicolon-separated string
+    creator:           Option<String>,
+    producer:          Option<String>,
+    creation_date:     Option<String>,  // raw PDF date, e.g. "D:20230415143022+05'30'"
+    modification_date: Option<String>,
+    page_count:        usize,
+    file_size_bytes:   Option<u64>,     // None if stat() fails (e.g. unsaved temp doc)
+    pdf_version:       Option<String>,  // e.g. "PDF 1.7"; None if Unset
 }
 
 // ---------------------------------------------------------------------------
@@ -142,6 +162,7 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
             doc: Mutex::new(doc),
             page_count,
             filename: filename.clone(),
+            path: path.clone(),
             _bytes: pdf_bytes,
         }),
     );
@@ -154,6 +175,47 @@ fn open_document(path: String, state: State<AppState>) -> Result<DocumentManifes
         page_sizes,
         can_undo: false,
         can_redo: false,
+    })
+}
+
+/// Return metadata and file statistics for an open document.
+/// Fields sourced from the PDF InfoDict are Option — most real-world PDFs omit many of them.
+#[tauri::command]
+fn get_document_info(doc_id: u32, state: State<AppState>) -> Result<DocumentInfo, String> {
+    let entry = require_doc(doc_id, &state)?;
+    let doc = entry.doc.lock().unwrap();
+    let meta = doc.metadata();
+    use PdfDocumentMetadataTagType::*;
+
+    // Match on the version enum variants directly — as_pdfium() is pub(crate).
+    let pdf_version = match doc.version() {
+        PdfDocumentVersion::Unset    => None,
+        PdfDocumentVersion::Pdf1_0   => Some("PDF 1.0".to_string()),
+        PdfDocumentVersion::Pdf1_1   => Some("PDF 1.1".to_string()),
+        PdfDocumentVersion::Pdf1_2   => Some("PDF 1.2".to_string()),
+        PdfDocumentVersion::Pdf1_3   => Some("PDF 1.3".to_string()),
+        PdfDocumentVersion::Pdf1_4   => Some("PDF 1.4".to_string()),
+        PdfDocumentVersion::Pdf1_5   => Some("PDF 1.5".to_string()),
+        PdfDocumentVersion::Pdf1_6   => Some("PDF 1.6".to_string()),
+        PdfDocumentVersion::Pdf1_7   => Some("PDF 1.7".to_string()),
+        PdfDocumentVersion::Pdf2_0   => Some("PDF 2.0".to_string()),
+        PdfDocumentVersion::Other(n) => Some(format!("PDF (version {})", n)),
+    };
+
+    let file_size_bytes = std::fs::metadata(&entry.path).map(|m| m.len()).ok();
+
+    Ok(DocumentInfo {
+        title:             meta.get(Title).map(|t| t.value().to_string()),
+        author:            meta.get(Author).map(|t| t.value().to_string()),
+        subject:           meta.get(Subject).map(|t| t.value().to_string()),
+        keywords:          meta.get(Keywords).map(|t| t.value().to_string()),
+        creator:           meta.get(Creator).map(|t| t.value().to_string()),
+        producer:          meta.get(Producer).map(|t| t.value().to_string()),
+        creation_date:     meta.get(CreationDate).map(|t| t.value().to_string()),
+        modification_date: meta.get(ModificationDate).map(|t| t.value().to_string()),
+        page_count:        entry.page_count,
+        file_size_bytes,
+        pdf_version,
     })
 }
 
@@ -495,6 +557,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_document,
             close_document,
+            get_document_info,
             set_menu_theme,
             set_pdf_menus_enabled,
             save_document,
@@ -576,5 +639,14 @@ mod tests {
         let state = empty_state();
         assert_eq!(require_doc(4, &state).err().unwrap(), "document 4 not found");
         assert_eq!(require_doc(5, &state).err().unwrap(), "document 5 not found");
+    }
+
+    #[test]
+    fn get_document_info_unknown_doc_returns_err() {
+        let state = empty_state();
+        assert_eq!(
+            require_doc(99, &state).err().unwrap(),
+            "document 99 not found"
+        );
     }
 }

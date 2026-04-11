@@ -25,6 +25,9 @@ interface AppStore {
   selectPageRange(from: number, to: number): void;
   clearSelection(): void;
   selectAll(count: number): void;
+  infoPanelOpen: boolean;
+  setInfoPanelOpen(open: boolean): void;
+  toggleInfoPanel(): void;
 }
 
 export const ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200, 300, 400];
@@ -67,6 +70,9 @@ export const useAppStore = create<AppStore>()(
         for (let i = 0; i < count; i++) next.add(i);
         set({ selectedPages: next });
       },
+      infoPanelOpen: false,
+      setInfoPanelOpen: (open) => set({ infoPanelOpen: open }),
+      toggleInfoPanel: () => set((s) => ({ infoPanelOpen: !s.infoPanelOpen })),
     }),
     {
       name: "collate-settings",

@@ -1,5 +1,6 @@
 import {
   FolderOpen,
+  Info,
   Maximize2,
   Monitor,
   Moon,
@@ -36,6 +37,8 @@ interface ToolbarProps {
   onSave(): void;
   onUndo(): void;
   onRedo(): void;
+  infoPanelOpen: boolean;
+  onToggleInfo(): void;
 }
 
 const THEME_CYCLE: Theme[] = ["system", "light", "dark"];
@@ -52,7 +55,7 @@ const THEME_LABEL: Record<Theme, string> = {
   dark: "Theme: Dark",
 };
 
-export function Toolbar({ onOpen, loading, hasDocument, isDirty, canUndo, canRedo, onSave, onUndo, onRedo }: ToolbarProps) {
+export function Toolbar({ onOpen, loading, hasDocument, isDirty, canUndo, canRedo, onSave, onUndo, onRedo, infoPanelOpen, onToggleInfo }: ToolbarProps) {
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const zoom = useAppStore((s) => s.zoom);
@@ -197,6 +200,21 @@ export function Toolbar({ onOpen, loading, hasDocument, isDirty, canUndo, canRed
         </ButtonGroup>
 
         <div className="flex-1" />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon"
+              variant={infoPanelOpen ? "secondary" : "ghost"}
+              onClick={onToggleInfo}
+              disabled={!hasDocument}
+              aria-label="Document info"
+            >
+              <Info className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Document Info</TooltipContent>
+        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>

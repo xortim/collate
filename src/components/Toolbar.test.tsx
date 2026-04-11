@@ -16,6 +16,8 @@ function renderToolbar(props: {
   onSave?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
+  infoPanelOpen?: boolean;
+  onToggleInfo?: () => void;
 }) {
   return render(
     <SidebarProvider>
@@ -29,6 +31,8 @@ function renderToolbar(props: {
         onSave={props.onSave ?? vi.fn()}
         onUndo={props.onUndo ?? vi.fn()}
         onRedo={props.onRedo ?? vi.fn()}
+        infoPanelOpen={props.infoPanelOpen ?? false}
+        onToggleInfo={props.onToggleInfo ?? vi.fn()}
       />
     </SidebarProvider>
   );
@@ -168,5 +172,42 @@ describe("Toolbar", () => {
 
     await userEvent.click(toggle);
     expect(useAppStore.getState().theme).toBe("system");
+  });
+});
+
+describe("Info button", () => {
+  it("renders a button with aria-label 'Document info'", () => {
+    renderToolbar({});
+    expect(screen.getByRole("button", { name: /document info/i })).toBeInTheDocument();
+  });
+
+  it("is disabled when hasDocument is false", () => {
+    renderToolbar({ hasDocument: false });
+    expect(screen.getByRole("button", { name: /document info/i })).toBeDisabled();
+  });
+
+  it("is enabled when hasDocument is true", () => {
+    renderToolbar({ hasDocument: true });
+    expect(screen.getByRole("button", { name: /document info/i })).not.toBeDisabled();
+  });
+
+  it("calls onToggleInfo when clicked", async () => {
+    const onToggleInfo = vi.fn();
+    renderToolbar({ hasDocument: true, onToggleInfo });
+    await userEvent.click(screen.getByRole("button", { name: /document info/i }));
+    expect(onToggleInfo).toHaveBeenCalledOnce();
+  });
+
+  it("uses secondary variant when infoPanelOpen is true", () => {
+    renderToolbar({ hasDocument: true, infoPanelOpen: true });
+    const btn = screen.getByRole("button", { name: /document info/i });
+    // secondary variant adds bg-secondary to the button
+    expect(btn.className).toMatch(/bg-secondary/);
+  });
+
+  it("uses ghost variant when infoPanelOpen is false", () => {
+    renderToolbar({ hasDocument: true, infoPanelOpen: false });
+    const btn = screen.getByRole("button", { name: /document info/i });
+    expect(btn.className).not.toMatch(/bg-secondary/);
   });
 });
