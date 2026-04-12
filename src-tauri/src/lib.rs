@@ -450,6 +450,25 @@ fn find_open_recent_submenu<R: tauri::Runtime>(
     None
 }
 
+/// Returns the display label for a recent-file menu item.
+///
+/// Extracted as a pure function so it can be unit-tested without a Tauri runtime.
+fn format_recent_menu_label(path: &str, exists: bool) -> String {
+    let name = Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_owned());
+    if exists { name } else { format!("{name} (not found)") }
+}
+
+/// Parses a `"recent-{n}"` menu-item ID and returns the index `n`, or `None`
+/// if the string doesn't match the expected pattern.
+///
+/// Extracted as a pure function so it can be unit-tested without a Tauri runtime.
+fn parse_recent_id(id: &str) -> Option<usize> {
+    id.strip_prefix("recent-")?.parse().ok()
+}
+
 /// Rebuild the "Open Recent" submenu contents to match `paths`.
 ///
 /// Called from the frontend after every open or clear action so the native
@@ -462,7 +481,10 @@ fn update_recent_menu(app: tauri::AppHandle, state: State<AppState>, paths: Vec<
 
     let Some(menu) = app.menu() else { return };
     let Ok(items) = menu.items() else { return };
-    let Some(sub) = find_open_recent_submenu(items) else { return };
+    let Some(sub) = find_open_recent_submenu(items) else {
+        eprintln!("[collate] update_recent_menu: open-recent submenu not found");
+        return;
+    };
 
     // Drain all existing items from the submenu.
     while let Ok(Some(_)) = sub.remove_at(0) {}
@@ -474,11 +496,7 @@ fn update_recent_menu(app: tauri::AppHandle, state: State<AppState>, paths: Vec<
     } else {
         for (i, path) in paths.iter().enumerate() {
             let exists = Path::new(path).exists();
-            let name = Path::new(path)
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| path.clone());
-            let label = if exists { name } else { format!("{name} (not found)") };
+            let label = format_recent_menu_label(path, exists);
             if let Ok(item) = MenuItem::with_id(&app, format!("recent-{i}"), label, exists, None::<&str>) {
                 let _ = sub.append(&item);
             }
@@ -627,7 +645,7 @@ pub fn run() {
                 "report-bug"   => { let _ = app.emit("menu-report-bug", ()); }
                 "clear-recent" => { let _ = app.emit("menu-clear-recent", ()); }
                 id if id.starts_with("recent-") => {
-                    if let Ok(idx) = id.trim_start_matches("recent-").parse::<usize>() {
+                    if let Some(idx) = parse_recent_id(id) {
                         let paths = app.state::<AppState>().recent_paths.lock().unwrap().clone();
                         if let Some(path) = paths.get(idx) {
                             let _ = app.emit("menu-open-recent", path.clone());
@@ -802,6 +820,50 @@ mod tests {
         let state = empty_state();
         assert_eq!(require_doc(4, &state).err().unwrap(), "document 4 not found");
         assert_eq!(require_doc(5, &state).err().unwrap(), "document 5 not found");
+    }
+
+    // format_recent_menu_label
+
+    #[test]
+    fn format_recent_menu_label_returns_filename_when_exists() {
+        assert_eq!(format_recent_menu_label("/docs/report.pdf", true), "report.pdf");
+    }
+
+    #[test]
+    fn format_recent_menu_label_appends_not_found_when_missing() {
+        assert_eq!(
+            format_recent_menu_label("/docs/report.pdf", false),
+            "report.pdf (not found)"
+        );
+    }
+
+    #[test]
+    fn format_recent_menu_label_falls_back_to_full_path_when_no_filename() {
+        // A path like "/" has no file_name component.
+        assert_eq!(format_recent_menu_label("/", false), "/ (not found)");
+    }
+
+    // parse_recent_id
+
+    #[test]
+    fn parse_recent_id_returns_index_for_valid_ids() {
+        assert_eq!(parse_recent_id("recent-0"), Some(0));
+        assert_eq!(parse_recent_id("recent-9"), Some(9));
+    }
+
+    #[test]
+    fn parse_recent_id_returns_none_for_empty_suffix() {
+        assert_eq!(parse_recent_id("recent-"), None);
+    }
+
+    #[test]
+    fn parse_recent_id_returns_none_for_non_numeric_suffix() {
+        assert_eq!(parse_recent_id("recent-abc"), None);
+    }
+
+    #[test]
+    fn parse_recent_id_returns_none_for_unrelated_id() {
+        assert_eq!(parse_recent_id("open-recent"), None);
     }
 
     #[test]

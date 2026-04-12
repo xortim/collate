@@ -55,15 +55,13 @@ function App() {
   const infoPanelOpen = useAppStore((s) => s.infoPanelOpen);
   const setInfoPanelOpen = useAppStore((s) => s.setInfoPanelOpen);
   const toggleInfoPanel = useAppStore((s) => s.toggleInfoPanel);
-  const recentFiles = useAppStore((s) => s.recentFiles);
-
   // Apply theme (dark class on <html>) and keep it in sync with OS changes
   useTheme();
 
   // Sync the "Open Recent" submenu once on mount with whatever was persisted.
   useEffect(() => {
-    void invoke("update_recent_menu", { paths: recentFiles });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    void invoke("update_recent_menu", { paths: useAppStore.getState().recentFiles });
+  }, []);
 
   // Sync native menu checkmarks whenever theme changes.
   // Fires on startup (picks up persisted value) and after toolbar cycle changes.
