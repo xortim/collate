@@ -517,6 +517,7 @@ fn update_recent_menu(app: tauri::AppHandle, state: State<AppState>, paths: Vec<
 const PDF_MENU_IDS: &[&str] = &[
     "close", "print", "undo", "redo", "select-all", "find",
     "save", "save-as",
+    "next-tab", "prev-tab",
     "zoom-in", "zoom-out", "zoom-fit-width",
     "doc-info",
     // Document menu
@@ -635,6 +636,8 @@ pub fn run() {
                 "display-continuous" => { set_display_checks(app, "continuous"); let _ = app.emit("menu-display", "continuous"); }
                 "display-single"     => { set_display_checks(app, "single");     let _ = app.emit("menu-display", "single"); }
                 "display-spread"     => { set_display_checks(app, "spread");     let _ = app.emit("menu-display", "spread"); }
+                "next-tab"       => { let _ = app.emit("menu-next-tab",       ()); }
+                "prev-tab"       => { let _ = app.emit("menu-prev-tab",       ()); }
                 "zoom-in"        => { let _ = app.emit("menu-zoom-in",        ()); }
                 "zoom-out"       => { let _ = app.emit("menu-zoom-out",       ()); }
                 "zoom-fit-width" => { let _ = app.emit("menu-zoom-fit-width", ()); }

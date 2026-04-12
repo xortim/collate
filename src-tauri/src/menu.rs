@@ -26,6 +26,8 @@ use tauri::{
 ///   "split"              — Document → Split Document…
 ///   "merge"              — Document → Merge Document…
 ///   "import-pages"       — Document → Import Pages…
+///   "next-tab"           — View → Next Tab
+///   "prev-tab"           — View → Previous Tab
 ///   "display-continuous" — View → Page Display → Continuous Scroll
 ///   "display-single"     — View → Page Display → Single Page
 ///   "display-spread"     — View → Page Display → Two-Page Spread
@@ -102,6 +104,23 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         ],
     )?;
 
+    // ── View → Tab navigation ─────────────────────────────────────────────
+    // macOS: ⌘⇧] / ⌘⇧[  (matches Safari / Terminal)
+    // Win/Linux: Ctrl+PageDown / Ctrl+PageUp  (matches Chrome DevTools / VS Code)
+    let next_tab_accel: Option<&str> = if cfg!(target_os = "macos") {
+        Some("Shift+CmdOrCtrl+]")
+    } else {
+        Some("Ctrl+PageDown")
+    };
+    let prev_tab_accel: Option<&str> = if cfg!(target_os = "macos") {
+        Some("Shift+CmdOrCtrl+[")
+    } else {
+        Some("Ctrl+PageUp")
+    };
+    let next_tab  = MenuItem::with_id(app, "next-tab",  "Next Tab",      false, next_tab_accel)?;
+    let prev_tab  = MenuItem::with_id(app, "prev-tab",  "Previous Tab",  false, prev_tab_accel)?;
+    let sep_tabs  = PredefinedMenuItem::separator(app)?;
+
     // ── View → Page Display ────────────────────────────────────────────────
     let display_continuous = CheckMenuItem::with_id(app, "display-continuous", "Continuous Scroll", false, true,  None::<&str>)?;
     let display_single     = CheckMenuItem::with_id(app, "display-single",     "Single Page",       false, false, None::<&str>)?;
@@ -129,7 +148,7 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         app,
         "View",
         true,
-        &[&display_menu, &sep_display, &doc_info, &sep_info, &zoom_menu, &sep_zoom, &appearance],
+        &[&next_tab, &prev_tab, &sep_tabs, &display_menu, &sep_display, &doc_info, &sep_info, &zoom_menu, &sep_zoom, &appearance],
     )?;
 
     // ── Help (required by macOS HIG) ───────────────────────────────────────
