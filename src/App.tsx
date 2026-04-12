@@ -55,9 +55,15 @@ function App() {
   const infoPanelOpen = useAppStore((s) => s.infoPanelOpen);
   const setInfoPanelOpen = useAppStore((s) => s.setInfoPanelOpen);
   const toggleInfoPanel = useAppStore((s) => s.toggleInfoPanel);
+  const recentFiles = useAppStore((s) => s.recentFiles);
 
   // Apply theme (dark class on <html>) and keep it in sync with OS changes
   useTheme();
+
+  // Sync the "Open Recent" submenu once on mount with whatever was persisted.
+  useEffect(() => {
+    void invoke("update_recent_menu", { paths: recentFiles });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync native menu checkmarks whenever theme changes.
   // Fires on startup (picks up persisted value) and after toolbar cycle changes.
@@ -141,21 +147,13 @@ function App() {
     setBugReportOpen(true);
   }
 
-  async function handleOpen() {
-    const path = await openDialog({
-      multiple: false,
-      filters: [{ name: "PDF", extensions: ["pdf"] }],
-    });
-
-    if (!path) return;
-
+  async function handleOpenPath(path: string) {
     setLoading(true);
-
-    if (manifest) {
-      await invoke("close_document", { docId: manifest.doc_id });
+    const current = manifestRef.current;
+    if (current) {
+      await invoke("close_document", { docId: current.doc_id });
     }
     setManifest(null);
-
     try {
       const m = await invoke<DocumentManifest>("open_document", { path });
       setManifest(m);
@@ -163,18 +161,22 @@ function App() {
       useAppStore.getState().clearSelection();
       useAppStore.getState().setIsDirty(false);
       void invoke("set_pdf_menus_enabled", { enabled: true });
+      useAppStore.getState().addRecentFile(path);
+      void invoke("update_recent_menu", { paths: useAppStore.getState().recentFiles });
     } catch (e) {
-      const message = String(e);
-      toast.error(message, {
-        duration: 6000,
-        action: {
-          label: <BugIcon className="size-4" />,
-          onClick: () => openBugReportForError(message),
-        },
-      });
+      showError(String(e));
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleOpen() {
+    const path = await openDialog({
+      multiple: false,
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
+    if (!path) return;
+    await handleOpenPath(path);
   }
 
   // Handle Mod+= for zoom in (mirrors the native menu's CmdOrCtrl+= shortcut).
@@ -253,6 +255,13 @@ function App() {
     const unlistenPrint   = listen<void>("menu-print",   () => {
       toast.error("Print is not yet implemented.", { duration: 4000 });
     });
+    const unlistenOpenRecent = listen<string>("menu-open-recent", (e) => {
+      void handleOpenPath(e.payload);
+    });
+    const unlistenClearRecent = listen<void>("menu-clear-recent", () => {
+      useAppStore.getState().clearRecentFiles();
+      void invoke("update_recent_menu", { paths: [] });
+    });
     return () => {
       unlistenOpen.then((fn) => fn());
       unlistenClose.then((fn) => fn());
@@ -276,6 +285,8 @@ function App() {
       unlistenRedo.then((fn) => fn());
       unlistenSelectAll.then((fn) => fn());
       unlistenPrint.then((fn) => fn());
+      unlistenOpenRecent.then((fn) => fn());
+      unlistenClearRecent.then((fn) => fn());
     };
     // handleOpen is defined in render scope but only reads stable refs/setState.
     // Omitting from deps avoids re-registering listeners on every render.

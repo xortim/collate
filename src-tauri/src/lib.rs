@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use pdfium_render::prelude::*;
 use serde::Serialize;
-use tauri::{http, menu::MenuItemKind, Emitter, Manager, State};
+use tauri::{http, menu::{MenuItem, MenuItemKind, PredefinedMenuItem, Submenu}, Emitter, Manager, State};
 
 mod menu;
 mod render;
@@ -45,6 +45,10 @@ struct AppState {
     // without holding State<'_> (which has a lifetime) across an await point.
     documents: Mutex<HashMap<u32, Arc<DocumentEntry>>>,
     next_id: AtomicU32,
+    /// Most-recently-opened file paths, mirrored from the frontend's Zustand
+    /// store. Stored here so on_menu_event can resolve "recent-{n}" clicks
+    /// back to a full path without a round-trip to the frontend.
+    recent_paths: Mutex<Vec<String>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +420,79 @@ fn set_theme_checks(app: &tauri::AppHandle, selected: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// Open Recent menu helpers
+// ---------------------------------------------------------------------------
+
+/// Walk `items` and return the first Submenu whose ID is "open-recent".
+/// Recurses one level into any other Submenu encountered.
+///
+/// Menu::get() does not reliably recurse in all Tauri 2.x releases (see
+/// apply_theme_checks), so we traverse manually — same pattern as the other
+/// menu helpers in this file.
+fn find_open_recent_submenu<R: tauri::Runtime>(
+    items: Vec<MenuItemKind<R>>,
+) -> Option<Submenu<R>> {
+    for item in items {
+        match item {
+            MenuItemKind::Submenu(sub) => {
+                if sub.id().as_ref() == "open-recent" {
+                    return Some(sub);
+                }
+                if let Ok(children) = sub.items() {
+                    if let Some(found) = find_open_recent_submenu(children) {
+                        return Some(found);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Rebuild the "Open Recent" submenu contents to match `paths`.
+///
+/// Called from the frontend after every open or clear action so the native
+/// menu stays in sync with the Zustand store. Missing files are shown with a
+/// "(not found)" suffix and their menu items are disabled.
+#[tauri::command]
+fn update_recent_menu(app: tauri::AppHandle, state: State<AppState>, paths: Vec<String>) {
+    // Store paths so on_menu_event can resolve "recent-{n}" to a full path.
+    *state.recent_paths.lock().unwrap() = paths.clone();
+
+    let Some(menu) = app.menu() else { return };
+    let Ok(items) = menu.items() else { return };
+    let Some(sub) = find_open_recent_submenu(items) else { return };
+
+    // Drain all existing items from the submenu.
+    while let Ok(Some(_)) = sub.remove_at(0) {}
+
+    if paths.is_empty() {
+        if let Ok(item) = MenuItem::with_id(&app, "recent-empty", "No Recent Items", false, None::<&str>) {
+            let _ = sub.append(&item);
+        }
+    } else {
+        for (i, path) in paths.iter().enumerate() {
+            let exists = Path::new(path).exists();
+            let name = Path::new(path)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone());
+            let label = if exists { name } else { format!("{name} (not found)") };
+            if let Ok(item) = MenuItem::with_id(&app, format!("recent-{i}"), label, exists, None::<&str>) {
+                let _ = sub.append(&item);
+            }
+        }
+        if let Ok(sep) = PredefinedMenuItem::separator(&app) {
+            let _ = sub.append(&sep);
+        }
+        if let Ok(clear) = MenuItem::with_id(&app, "clear-recent", "Clear Recent", true, None::<&str>) {
+            let _ = sub.append(&clear);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // PDF document menu helpers
 // ---------------------------------------------------------------------------
 
@@ -548,12 +625,22 @@ pub fn run() {
                 "theme-light"  => { set_theme_checks(app, "light");  let _ = app.emit("menu-theme", "light"); }
                 "theme-dark"   => { set_theme_checks(app, "dark");   let _ = app.emit("menu-theme", "dark"); }
                 "report-bug"   => { let _ = app.emit("menu-report-bug", ()); }
+                "clear-recent" => { let _ = app.emit("menu-clear-recent", ()); }
+                id if id.starts_with("recent-") => {
+                    if let Ok(idx) = id.trim_start_matches("recent-").parse::<usize>() {
+                        let paths = app.state::<AppState>().recent_paths.lock().unwrap().clone();
+                        if let Some(path) = paths.get(idx) {
+                            let _ = app.emit("menu-open-recent", path.clone());
+                        }
+                    }
+                }
                 _ => {}
             }
         })
         .manage(AppState {
             documents: Mutex::new(HashMap::new()),
             next_id: AtomicU32::new(0),
+            recent_paths: Mutex::new(vec![]),
         })
         // ---------------------------------------------------------------------------
         // Page image protocol — collate://localhost/{doc_id}/{page_index}/{width}
@@ -634,6 +721,7 @@ pub fn run() {
             get_document_info,
             set_menu_theme,
             set_pdf_menus_enabled,
+            update_recent_menu,
             save_document,
             undo_document,
             redo_document,
@@ -658,6 +746,7 @@ mod tests {
         AppState {
             documents: Mutex::new(HashMap::new()),
             next_id: AtomicU32::new(0),
+            recent_paths: Mutex::new(vec![]),
         }
     }
 

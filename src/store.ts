@@ -12,6 +12,9 @@ interface AppStore {
   setSidebarWidth(width: number): void;
   theme: Theme;
   setTheme(theme: Theme): void;
+  recentFiles: string[];
+  addRecentFile(path: string): void;
+  clearRecentFiles(): void;
   zoom: number;
   setZoom(zoom: number): void;
   zoomMode: ZoomMode;
@@ -41,6 +44,13 @@ export const useAppStore = create<AppStore>()(
       setSidebarWidth: (width) => set({ sidebarWidth: width }),
       theme: "system",
       setTheme: (theme) => set({ theme }),
+      recentFiles: [],
+      addRecentFile: (path) =>
+        set((s) => {
+          const without = s.recentFiles.filter((p) => p !== path);
+          return { recentFiles: [path, ...without].slice(0, 10) };
+        }),
+      clearRecentFiles: () => set({ recentFiles: [] }),
       zoom: 75,
       setZoom: (zoom) => set({ zoom }),
       zoomMode: "manual",
@@ -77,7 +87,7 @@ export const useAppStore = create<AppStore>()(
     {
       name: "collate-settings",
       // Only persist user preferences, not transient document state
-      partialize: (state) => ({ theme: state.theme }),
+      partialize: (state) => ({ theme: state.theme, recentFiles: state.recentFiles }),
     }
   )
 );
