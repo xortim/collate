@@ -107,6 +107,45 @@ describe("selectAll", () => {
 });
 
 // ---------------------------------------------------------------------------
+// recentFiles
+// ---------------------------------------------------------------------------
+
+describe("recentFiles", () => {
+  beforeEach(() => {
+    useAppStore.setState({ recentFiles: [] });
+  });
+
+  it("starts empty", () => {
+    expect(useAppStore.getState().recentFiles).toEqual([]);
+  });
+
+  it("addRecentFile prepends to the list", () => {
+    useAppStore.getState().addRecentFile("/a.pdf");
+    useAppStore.getState().addRecentFile("/b.pdf");
+    expect(useAppStore.getState().recentFiles[0]).toBe("/b.pdf");
+  });
+
+  it("addRecentFile deduplicates (existing entry moves to front)", () => {
+    useAppStore.setState({ recentFiles: ["/a.pdf", "/b.pdf"] });
+    useAppStore.getState().addRecentFile("/b.pdf");
+    expect(useAppStore.getState().recentFiles).toEqual(["/b.pdf", "/a.pdf"]);
+  });
+
+  it("addRecentFile trims list to 10", () => {
+    for (let i = 0; i < 12; i++) {
+      useAppStore.getState().addRecentFile(`/${i}.pdf`);
+    }
+    expect(useAppStore.getState().recentFiles.length).toBe(10);
+  });
+
+  it("clearRecentFiles empties the list", () => {
+    useAppStore.setState({ recentFiles: ["/a.pdf"] });
+    useAppStore.getState().clearRecentFiles();
+    expect(useAppStore.getState().recentFiles).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // infoPanelOpen
 // ---------------------------------------------------------------------------
 
