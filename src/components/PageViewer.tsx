@@ -21,8 +21,8 @@ export interface PageViewerHandle {
 /** Gap between pages in pixels. */
 const PAGE_GAP = 16;
 
-/** Extra space above the first page — matches PAGE_GAP for visual consistency. */
-const PAGE_TOP_GAP = PAGE_GAP;
+/** Extra space above the first page so content isn't cramped against the tab bar. */
+const PAGE_TOP_GAP = 28;
 
 /** Horizontal padding around pages in fit-width mode (16px each side). */
 const PAGE_PADDING_X = 32;
