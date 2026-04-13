@@ -3,6 +3,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { toast } from "sonner";
 import { BugIcon } from "lucide-react";
 import { BugReportDialog } from "./components/BugReportDialog";
@@ -11,43 +12,35 @@ import { ShortcutOverlay } from "./components/ShortcutOverlay";
 import { EmptyState } from "./components/EmptyState";
 import { PageViewer, PageViewerHandle } from "./components/PageViewer";
 import { PageSidebar } from "./components/PageSidebar";
+import { TabBar } from "./components/TabBar";
 import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
-import { Separator } from "@/components/ui/separator";
 import { Toaster } from "@/components/ui/sonner";
 import {
   Sidebar,
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar";
-import { useAppStore, ZOOM_STEPS, PageDisplay } from "@/store";
+import { useAppStore, ZOOM_STEPS, PageDisplay, TabEntry } from "@/store";
 import { useTheme } from "@/hooks/useTheme";
 import { platformName } from "@/lib/platform";
-
-interface PageSize {
-  width_pts: number;
-  height_pts: number;
-}
-
-interface DocumentManifest {
-  doc_id: number;
-  page_count: number;
-  filename: string;
-  path: string;
-  page_sizes: PageSize[];
-  can_undo: boolean;
-  can_redo: boolean;
-}
+import { cn } from "@/lib/utils";
+import type { DocumentManifest } from "@/types";
 
 function App() {
-  const [manifest, setManifest] = useState<DocumentManifest | null>(null);
   const [loading, setLoading] = useState(false);
   const [bugReportOpen, setBugReportOpen] = useState(false);
   const [bugPrefill, setBugPrefill] = useState<{ title: string; description: string } | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const viewerRef = useRef<PageViewerHandle>(null);
-  const manifestRef = useRef<DocumentManifest | null>(null);
+  // Stable ref for use inside event listener closures
+  const activeTabRef = useRef<TabEntry | null>(null);
+
+  const tabs = useAppStore((s) => s.tabs);
+  const activeDocId = useAppStore((s) => s.activeDocId);
+  const activeTab = tabs.find((t) => t.docId === activeDocId) ?? null;
   const sidebarWidth = useAppStore((s) => s.sidebarWidth);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
@@ -55,8 +48,13 @@ function App() {
   const infoPanelOpen = useAppStore((s) => s.infoPanelOpen);
   const setInfoPanelOpen = useAppStore((s) => s.setInfoPanelOpen);
   const toggleInfoPanel = useAppStore((s) => s.toggleInfoPanel);
+  const reorderTabs = useAppStore((s) => s.reorderTabs);
+
   // Apply theme (dark class on <html>) and keep it in sync with OS changes
   useTheme();
+
+  // Keep ref in sync so event listeners always see the current active tab
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
   // Sync the "Open Recent" submenu once on mount with whatever was persisted.
   useEffect(() => {
@@ -64,25 +62,17 @@ function App() {
   }, []);
 
   // Sync native menu checkmarks whenever theme changes.
-  // Fires on startup (picks up persisted value) and after toolbar cycle changes.
   useEffect(() => {
     invoke("set_menu_theme", { theme });
   }, [theme]);
 
-  // Keep ref in sync so menu event listeners (registered once on mount) always
-  // see the current manifest rather than the stale closure value.
-  useEffect(() => { manifestRef.current = manifest; }, [manifest]);
-
-  async function handleClose() {
-    const m = manifestRef.current;
-    if (!m) return;
-    await invoke("close_document", { docId: m.doc_id });
-    await invoke("set_pdf_menus_enabled", { enabled: false });
-    setManifest(null);
-    useAppStore.getState().setActivePage(0);
-    useAppStore.getState().clearSelection();
-    useAppStore.getState().setIsDirty(false);
-    useAppStore.getState().setInfoPanelOpen(false);
+  async function handleCloseTab(docId: number) {
+    await invoke("close_document", { docId });
+    useAppStore.getState().removeTab(docId);
+    if (useAppStore.getState().tabs.length === 0) {
+      void invoke("set_pdf_menus_enabled", { enabled: false });
+      useAppStore.getState().setInfoPanelOpen(false);
+    }
   }
 
   function showError(message: string) {
@@ -96,11 +86,11 @@ function App() {
   }
 
   async function handleSave(path?: string) {
-    const m = manifestRef.current;
+    const m = activeTabRef.current;
     if (!m) return;
     const savePath = path ?? m.path;
     try {
-      await invoke("save_document", { docId: m.doc_id, path: savePath });
+      await invoke("save_document", { docId: m.docId, path: savePath });
       useAppStore.getState().setIsDirty(false);
     } catch (e) {
       showError(String(e));
@@ -113,22 +103,35 @@ function App() {
   }
 
   async function handleUndo() {
-    const m = manifestRef.current;
+    const m = activeTabRef.current;
     if (!m) return;
     try {
-      const next = await invoke<DocumentManifest>("undo_document", { docId: m.doc_id });
-      setManifest(next);
+      const next = await invoke<DocumentManifest>("undo_document", { docId: m.docId });
+      // Update the tab's canUndo/canRedo from the returned manifest
+      useAppStore.setState((s) => ({
+        tabs: s.tabs.map((t) =>
+          t.docId === next.doc_id
+            ? { ...t, canUndo: next.can_undo, canRedo: next.can_redo }
+            : t
+        ),
+      }));
     } catch (e) {
       showError(String(e));
     }
   }
 
   async function handleRedo() {
-    const m = manifestRef.current;
+    const m = activeTabRef.current;
     if (!m) return;
     try {
-      const next = await invoke<DocumentManifest>("redo_document", { docId: m.doc_id });
-      setManifest(next);
+      const next = await invoke<DocumentManifest>("redo_document", { docId: m.docId });
+      useAppStore.setState((s) => ({
+        tabs: s.tabs.map((t) =>
+          t.docId === next.doc_id
+            ? { ...t, canUndo: next.can_undo, canRedo: next.can_redo }
+            : t
+        ),
+      }));
     } catch (e) {
       showError(String(e));
     }
@@ -146,18 +149,16 @@ function App() {
   }
 
   async function handleOpenPath(path: string) {
-    setLoading(true);
-    const current = manifestRef.current;
-    if (current) {
-      await invoke("close_document", { docId: current.doc_id });
+    // Deduplicate: if already open, just switch to it
+    const existing = useAppStore.getState().tabs.find((t) => t.path === path);
+    if (existing) {
+      handleSwitchTab(existing.docId);
+      return;
     }
-    setManifest(null);
+    setLoading(true);
     try {
       const m = await invoke<DocumentManifest>("open_document", { path });
-      setManifest(m);
-      useAppStore.getState().setActivePage(0);
-      useAppStore.getState().clearSelection();
-      useAppStore.getState().setIsDirty(false);
+      useAppStore.getState().addTab(m);
       void invoke("set_pdf_menus_enabled", { enabled: true });
       useAppStore.getState().addRecentFile(path);
       void invoke("update_recent_menu", { paths: useAppStore.getState().recentFiles });
@@ -177,6 +178,36 @@ function App() {
     await handleOpenPath(path);
   }
 
+  function handleSwitchTab(docId: number) {
+    useAppStore.getState().setActiveDocId(docId);
+    // Scroll to the restored activePage after the virtualizer remounts
+    requestAnimationFrame(() => {
+      viewerRef.current?.scrollToPage(useAppStore.getState().activePage);
+    });
+  }
+
+  function navigateTabs(direction: 1 | -1) {
+    const { tabs, activeDocId } = useAppStore.getState();
+    if (tabs.length < 2) return;
+    const idx = tabs.findIndex((t) => t.docId === activeDocId);
+    if (idx === -1) return;
+    const next = tabs[(idx + direction + tabs.length) % tabs.length];
+    useAppStore.getState().setActiveDocId(next.docId);
+    requestAnimationFrame(() => {
+      viewerRef.current?.scrollToPage(useAppStore.getState().activePage);
+    });
+  }
+
+  function jumpToTab(n: number) {
+    const { tabs } = useAppStore.getState();
+    if (tabs.length === 0) return;
+    const target = tabs[Math.min(n - 1, tabs.length - 1)];
+    useAppStore.getState().setActiveDocId(target.docId);
+    requestAnimationFrame(() => {
+      viewerRef.current?.scrollToPage(useAppStore.getState().activePage);
+    });
+  }
+
   // Handle Mod+= for zoom in (mirrors the native menu's CmdOrCtrl+= shortcut).
   // Also handles ? (shortcut overlay) and Cmd+A (select all pages).
   useEffect(() => {
@@ -193,11 +224,24 @@ function App() {
         setShowShortcuts((v) => !v);
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "a") {
-        const m = manifestRef.current;
+        const m = activeTabRef.current;
         if (m) {
           e.preventDefault();
-          useAppStore.getState().selectAll(m.page_count);
+          useAppStore.getState().selectAll(m.pageCount);
         }
+      }
+      // ⌘⇧] / ⌘⇧[ — next/prev tab (Mac; key is "}"/"}" because Shift+]/[ on US layout)
+      if (e.metaKey && e.key === "}") { e.preventDefault(); navigateTabs(1); }
+      if (e.metaKey && e.key === "{") { e.preventDefault(); navigateTabs(-1); }
+      // Ctrl+Tab / Ctrl+Shift+Tab — next/prev tab (Windows/Linux)
+      if (e.ctrlKey && !e.metaKey && e.key === "Tab") {
+        e.preventDefault();
+        if (e.shiftKey) navigateTabs(-1); else navigateTabs(1);
+      }
+      // ⌘1–⌘9 / Ctrl+1–9 — jump to nth tab; ⌘9 / Ctrl+9 goes to last tab
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key >= "1" && e.key <= "9") {
+        e.preventDefault();
+        jumpToTab(parseInt(e.key, 10));
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -207,7 +251,10 @@ function App() {
   // Listen for native menu events forwarded from the Rust backend
   useEffect(() => {
     const unlistenOpen  = listen<void>("menu-open",  () => handleOpen());
-    const unlistenClose = listen<void>("menu-close", () => handleClose());
+    const unlistenClose = listen<void>("menu-close", () => {
+      const { activeDocId } = useAppStore.getState();
+      if (activeDocId !== null) void handleCloseTab(activeDocId);
+    });
     const unlistenTheme = listen<string>("menu-theme", (e) =>
       setTheme(e.payload as "light" | "dark" | "system")
     );
@@ -247,8 +294,8 @@ function App() {
     const unlistenUndo      = listen<void>("menu-undo",       () => handleUndo());
     const unlistenRedo      = listen<void>("menu-redo",       () => handleRedo());
     const unlistenSelectAll = listen<void>("menu-select-all", () => {
-      const m = manifestRef.current;
-      if (m) useAppStore.getState().selectAll(m.page_count);
+      const m = activeTabRef.current;
+      if (m) useAppStore.getState().selectAll(m.pageCount);
     });
     const unlistenPrint   = listen<void>("menu-print",   () => {
       toast.error("Print is not yet implemented.", { duration: 4000 });
@@ -260,6 +307,8 @@ function App() {
       useAppStore.getState().clearRecentFiles();
       void invoke("update_recent_menu", { paths: [] });
     });
+    const unlistenNextTab = listen<void>("menu-next-tab", () => navigateTabs(1));
+    const unlistenPrevTab  = listen<void>("menu-prev-tab",  () => navigateTabs(-1));
     return () => {
       unlistenOpen.then((fn) => fn());
       unlistenClose.then((fn) => fn());
@@ -285,9 +334,45 @@ function App() {
       unlistenPrint.then((fn) => fn());
       unlistenOpenRecent.then((fn) => fn());
       unlistenClearRecent.then((fn) => fn());
+      unlistenNextTab.then((fn) => fn());
+      unlistenPrevTab.then((fn) => fn());
     };
     // handleOpen is defined in render scope but only reads stable refs/setState.
     // Omitting from deps avoids re-registering listeners on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Drag-and-drop: open PDFs dropped onto the window.
+  // Use a ref for the unlisten function so the Strict Mode double-invoke
+  // cleanup fires correctly even before the promise resolves.
+  useEffect(() => {
+    const cancelRef = { fn: null as (() => void) | null };
+    const promise = getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type === "enter" && event.payload.paths.length > 0) setIsDragOver(true);
+      if (event.payload.type === "leave" || event.payload.type === "cancel") setIsDragOver(false);
+      if (event.payload.type === "drop") {
+        setIsDragOver(false);
+        for (const path of event.payload.paths) {
+          if (path.toLowerCase().endsWith(".pdf")) void handleOpenPath(path);
+        }
+      }
+    });
+    promise.then((fn) => {
+      // If cleanup already ran before this resolved, unregister immediately
+      if (cancelRef.fn === null) {
+        cancelRef.fn = fn;
+      } else {
+        fn();
+      }
+    });
+    return () => {
+      if (cancelRef.fn) {
+        cancelRef.fn();
+      } else {
+        // Mark as cancelled so the .then() above will immediately unregister
+        cancelRef.fn = () => {};
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -297,14 +382,14 @@ function App() {
     // strip appropriate for page thumbnails.
     <SidebarProvider
       defaultOpen={true}
-      className="h-screen overflow-hidden"
+      className="h-screen overflow-hidden overscroll-none"
       style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
     >
-      {manifest && (
+      {activeTab && (
         <Sidebar collapsible="offcanvas">
           <PageSidebar
-            docId={manifest.doc_id}
-            pageSizes={manifest.page_sizes}
+            docId={activeTab.docId}
+            pageSizes={activeTab.pageSizes}
             onScrollToPage={(i) => viewerRef.current?.scrollToPage(i)}
             onBugReport={openBugReportForError}
           />
@@ -315,10 +400,10 @@ function App() {
         <Toolbar
           onOpen={handleOpen}
           loading={loading}
-          hasDocument={manifest !== null}
+          hasDocument={activeTab !== null}
           isDirty={isDirty}
-          canUndo={manifest?.can_undo ?? false}
-          canRedo={manifest?.can_redo ?? false}
+          canUndo={activeTab?.canUndo ?? false}
+          canRedo={activeTab?.canRedo ?? false}
           onSave={handleSave}
           onUndo={handleUndo}
           onRedo={handleRedo}
@@ -326,27 +411,39 @@ function App() {
           onToggleInfo={toggleInfoPanel}
         />
 
-        <Separator />
+        {tabs.length > 0 && (
+          <TabBar
+            tabs={tabs}
+            activeDocId={activeDocId}
+            onSwitch={handleSwitchTab}
+            onClose={(docId) => void handleCloseTab(docId)}
+            onReorder={reorderTabs}
+          />
+        )}
 
-        <div className="flex-1 overflow-hidden min-h-0">
-          {manifest ? (
+        <div className="relative flex-1 overflow-hidden min-h-0">
+          {activeTab ? (
             <PageViewer
+              key={activeDocId}
               ref={viewerRef}
-              docId={manifest.doc_id}
-              pageSizes={manifest.page_sizes}
+              docId={activeTab.docId}
+              pageSizes={activeTab.pageSizes}
             />
           ) : (
             <EmptyState onOpen={handleOpen} />
           )}
+          {isDragOver && (
+            <div className="absolute inset-0 ring-2 ring-blue-500 ring-inset bg-blue-500/10 pointer-events-none" />
+          )}
         </div>
 
-        <StatusBar pageCount={manifest?.page_count} />
+        <StatusBar pageCount={activeTab?.pageCount} />
       </SidebarInset>
 
-      {manifest && (
+      {activeTab && (
         <InfoPanel
-          docId={manifest.doc_id}
-          filename={manifest.filename}
+          docId={activeTab.docId}
+          filename={activeTab.filename}
           open={infoPanelOpen}
           onOpenChange={setInfoPanelOpen}
         />

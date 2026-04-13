@@ -69,6 +69,10 @@ Tim is learning Rust through this project. He knows Go, bash, and unix tooling w
 
 Any button, menu item, toolbar action, or context menu item that requires an open document **must be disabled** (not hidden) when no document is open. This includes — but is not limited to — zoom controls, page navigation, close, print, and any document-mutation actions. Use shadcn/ui's `disabled` prop (which maps to the native `disabled` attribute and ARIA semantics). The enabled/disabled state must derive from the zustand store's document presence flag, not from ad-hoc local checks.
 
+## Long Text Truncation Rule
+
+Use `middleTruncate(str, maxLength)` from `src/lib/truncate.ts` when displaying long text (filenames, paths, labels) in the UI. It preserves both ends of the string; for filenames it also keeps the extension intact. Do not use the CSS `truncate` class for text that has semantic meaning at both ends.
+
 ## Key Design Principles (from spec)
 
 - Non-destructive by default. Source files are never modified until explicit save.

@@ -4,7 +4,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { modKey, shiftModKey } from "@/lib/platform";
+import { isMac, modKey, shiftModKey } from "@/lib/platform";
 
 interface Props {
   open: boolean;
@@ -42,6 +42,23 @@ function buildSections(): Section[] {
         { action: "Zoom Out",       keys: [`${mod}−`] },
         { action: "Fit Width",      keys: [`${mod}0`] },
         { action: "Toggle Sidebar", keys: [`${mod}B`] },
+      ],
+    },
+    {
+      label: "Navigation",
+      rows: [
+        {
+          action: "Next Tab",
+          keys: isMac ? ["⌘⇧]"] : ["Ctrl+Tab", "Ctrl+PgDn"],
+        },
+        {
+          action: "Previous Tab",
+          keys: isMac ? ["⌘⇧["] : ["Ctrl+Shift+Tab", "Ctrl+PgUp"],
+        },
+        {
+          action: "Jump to Tab",
+          keys: [`${mod}1 – ${mod}9`],
+        },
       ],
     },
     {

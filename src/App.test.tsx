@@ -2,7 +2,7 @@ import { render, screen, waitFor, fireEvent, act } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import App from "./App";
-import { useAppStore } from "@/store";
+import { useAppStore, type TabEntry } from "@/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -14,6 +14,11 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn().mockResolvedValue(null) }));
 vi.mock("@tauri-apps/api/app", () => ({ getVersion: vi.fn().mockResolvedValue("0.0.0") }));
+vi.mock("@tauri-apps/api/webview", () => ({
+  getCurrentWebview: () => ({
+    onDragDropEvent: vi.fn().mockResolvedValue(vi.fn()),
+  }),
+}));
 vi.mock("sonner", async (importOriginal) => {
   const actual = await importOriginal<typeof import("sonner")>();
   return { ...actual, toast: { ...actual.toast, error: vi.fn() } };
@@ -34,7 +39,15 @@ const MOCK_MANIFEST = {
 };
 
 beforeEach(() => {
-  useAppStore.setState({ theme: "system", zoom: 75, zoomMode: "manual", activePage: 0 });
+  useAppStore.setState({
+    theme: "system",
+    zoom: 75,
+    zoomMode: "manual",
+    activePage: 0,
+    tabs: [],
+    activeDocId: null,
+    docViewStates: new Map(),
+  });
   (invoke as Mock).mockResolvedValue(undefined);
   (openDialog as Mock).mockResolvedValue(null);
 });
@@ -165,5 +178,134 @@ describe("Edit > Select All menu event", () => {
     });
 
     expect(useAppStore.getState().selectedPages.size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tab navigation — keyboard shortcuts
+// ---------------------------------------------------------------------------
+
+const TAB_1: TabEntry = {
+  docId: 1, filename: "a.pdf", path: "/a.pdf",
+  pageCount: 1, pageSizes: [], canUndo: false, canRedo: false, isDirty: false,
+};
+const TAB_2: TabEntry = {
+  docId: 2, filename: "b.pdf", path: "/b.pdf",
+  pageCount: 1, pageSizes: [], canUndo: false, canRedo: false, isDirty: false,
+};
+const TAB_3: TabEntry = {
+  docId: 3, filename: "c.pdf", path: "/c.pdf",
+  pageCount: 1, pageSizes: [], canUndo: false, canRedo: false, isDirty: false,
+};
+
+describe("Tab navigation keyboard shortcuts", () => {
+  beforeEach(() => {
+    useAppStore.setState({
+      tabs: [TAB_1, TAB_2, TAB_3],
+      activeDocId: 1,
+      docViewStates: new Map(),
+    });
+  });
+
+  it("⌘} moves to next tab", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { key: "}", metaKey: true });
+    expect(useAppStore.getState().activeDocId).toBe(2);
+  });
+
+  it("⌘{ moves to previous tab", () => {
+    useAppStore.setState({ activeDocId: 2 });
+    render(<App />);
+    fireEvent.keyDown(window, { key: "{", metaKey: true });
+    expect(useAppStore.getState().activeDocId).toBe(1);
+  });
+
+  it("next tab wraps from last to first", () => {
+    useAppStore.setState({ activeDocId: 3 });
+    render(<App />);
+    fireEvent.keyDown(window, { key: "}", metaKey: true });
+    expect(useAppStore.getState().activeDocId).toBe(1);
+  });
+
+  it("prev tab wraps from first to last", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { key: "{", metaKey: true });
+    expect(useAppStore.getState().activeDocId).toBe(3);
+  });
+
+  it("Ctrl+Tab moves to next tab", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(useAppStore.getState().activeDocId).toBe(2);
+  });
+
+  it("Ctrl+Shift+Tab moves to previous tab", () => {
+    useAppStore.setState({ activeDocId: 2 });
+    render(<App />);
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true, shiftKey: true });
+    expect(useAppStore.getState().activeDocId).toBe(1);
+  });
+
+  it("⌘1 / Ctrl+1 jumps to first tab", () => {
+    useAppStore.setState({ activeDocId: 3 });
+    render(<App />);
+    fireEvent.keyDown(window, { key: "1", metaKey: true });
+    expect(useAppStore.getState().activeDocId).toBe(1);
+  });
+
+  it("⌘2 / Ctrl+2 jumps to second tab", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { key: "2", ctrlKey: true });
+    expect(useAppStore.getState().activeDocId).toBe(2);
+  });
+
+  it("⌘9 / Ctrl+9 jumps to last tab when fewer than 9 tabs open", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { key: "9", metaKey: true });
+    expect(useAppStore.getState().activeDocId).toBe(3);
+  });
+
+  it("does nothing when only one tab is open", () => {
+    useAppStore.setState({ tabs: [TAB_1], activeDocId: 1 });
+    render(<App />);
+    fireEvent.keyDown(window, { key: "}", metaKey: true });
+    expect(useAppStore.getState().activeDocId).toBe(1);
+  });
+
+  it("does nothing when no tabs are open", () => {
+    useAppStore.setState({ tabs: [], activeDocId: null });
+    render(<App />);
+    fireEvent.keyDown(window, { key: "}", metaKey: true });
+    expect(useAppStore.getState().activeDocId).toBeNull();
+  });
+});
+
+describe("Tab navigation menu events", () => {
+  let menuHandlers: Record<string, () => void>;
+
+  beforeEach(() => {
+    menuHandlers = {};
+    useAppStore.setState({
+      tabs: [TAB_1, TAB_2, TAB_3],
+      activeDocId: 1,
+      docViewStates: new Map(),
+    });
+    (listen as Mock).mockImplementation((event: string, cb: () => void) => {
+      menuHandlers[event] = cb;
+      return Promise.resolve(vi.fn());
+    });
+  });
+
+  it("menu-next-tab moves to next tab", async () => {
+    render(<App />);
+    await act(async () => { menuHandlers["menu-next-tab"]?.(); });
+    expect(useAppStore.getState().activeDocId).toBe(2);
+  });
+
+  it("menu-prev-tab moves to previous tab", async () => {
+    useAppStore.setState({ activeDocId: 2 });
+    render(<App />);
+    await act(async () => { menuHandlers["menu-prev-tab"]?.(); });
+    expect(useAppStore.getState().activeDocId).toBe(1);
   });
 });

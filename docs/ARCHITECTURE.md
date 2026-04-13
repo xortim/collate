@@ -748,6 +748,10 @@ For each page that has form fields, React renders a `<FormFieldOverlay>` positio
 
 Each input is positioned using the normalized coordinates from the backend (Section 5.3). Percentage-based positioning means the overlay scales automatically with zoom.
 
+### 7.7 UI Conventions
+
+**Long text truncation:** Use `middleTruncate(str, maxLength)` from `src/lib/truncate.ts` wherever long text needs to be shortened (filenames, paths, labels). It preserves both ends of the string and, for filenames, keeps the extension intact. Do not use the CSS `truncate` class for text that has semantic meaning at both ends.
+
 ---
 
 ## 8. Build & Distribution
