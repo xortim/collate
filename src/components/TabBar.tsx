@@ -10,7 +10,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
+import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -75,7 +75,7 @@ function SortableTab({ tab, isActive, onSwitch, onClose }: SortableTabProps) {
         }
       }}
       className={cn(
-        "inline-flex items-center gap-1.5 px-3 h-7 text-sm font-medium whitespace-nowrap border-t-2 select-none cursor-grab active:cursor-grabbing transition-colors",
+        "inline-flex items-center gap-1.5 px-3.5 h-8 text-sm font-medium whitespace-nowrap border-t-2 select-none cursor-grab active:cursor-grabbing transition-colors",
         isDragging && "opacity-0",
         isActive
           ? "bg-muted text-foreground border-primary"
@@ -130,7 +130,7 @@ export function TabBar({ tabs, activeDocId, onSwitch, onClose, onReorder }: TabB
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
-      modifiers={[restrictToHorizontalAxis]}
+      modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
@@ -139,7 +139,7 @@ export function TabBar({ tabs, activeDocId, onSwitch, onClose, onReorder }: TabB
         <div
           role="tablist"
           aria-label="Open documents"
-          className="flex shrink-0 overflow-x-auto items-end bg-background pt-1 px-2 gap-[3px]"
+          className="flex shrink-0 overflow-x-auto items-end bg-background border-t border-border pt-1.5 px-2 gap-1"
         >
           {tabs.map((tab) => (
             <SortableTab
@@ -155,7 +155,7 @@ export function TabBar({ tabs, activeDocId, onSwitch, onClose, onReorder }: TabB
 
       <DragOverlay dropAnimation={null}>
         {activeTab && (
-          <div className="inline-flex items-center gap-1.5 px-3 h-7 text-sm font-medium whitespace-nowrap border-t-2 bg-tab-inactive text-muted-foreground border-transparent cursor-grabbing shadow-md">
+          <div className="inline-flex items-center gap-1.5 px-3.5 h-8 text-sm font-medium whitespace-nowrap border-t-2 bg-muted text-foreground border-primary cursor-grabbing shadow-lg">
             <TabContent tab={activeTab} />
             <span className="ml-0.5 p-0.5">
               <X className="size-3" />

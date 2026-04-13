@@ -21,8 +21,8 @@ export interface PageViewerHandle {
 /** Gap between pages in pixels. */
 const PAGE_GAP = 16;
 
-/** Extra space above the first page so content isn't cramped against the tab bar. */
-const PAGE_TOP_GAP = 28;
+/** Extra space above the first page — matches PAGE_GAP for visual consistency. */
+const PAGE_TOP_GAP = PAGE_GAP;
 
 /** Horizontal padding around pages in fit-width mode (16px each side). */
 const PAGE_PADDING_X = 32;
@@ -193,7 +193,7 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
       scrollToPage(index) {
         const el = parentRef.current;
         if (!el) return;
-        let offset = PAGE_TOP_GAP;
+        let offset = 0;
         for (let i = 0; i < index; i++) {
           const { width_pts, height_pts } = pageSizes[i];
           offset += Math.round((height_pts / width_pts) * pageWidthFor(width_pts)) + PAGE_GAP;
