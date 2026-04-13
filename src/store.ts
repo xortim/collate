@@ -190,7 +190,16 @@ export const useAppStore = create<AppStore>()(
       zoomMode: "manual",
       setZoomMode: (zoomMode) => set({ zoomMode }),
       isDirty: false,
-      setIsDirty: (dirty) => set({ isDirty: dirty }),
+      setIsDirty: (dirty) =>
+        set((s) => ({
+          isDirty: dirty,
+          tabs:
+            s.activeDocId !== null
+              ? s.tabs.map((t) =>
+                  t.docId === s.activeDocId ? { ...t, isDirty: dirty } : t
+                )
+              : s.tabs,
+        })),
       selectedPages: new Set<number>(),
       togglePageSelection: (index) =>
         set((s) => {

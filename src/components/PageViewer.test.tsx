@@ -112,6 +112,21 @@ describe("PageViewer — scrollToPage", () => {
 
     expect(useAppStore.getState().activePage).toBe(10); // page 11, NOT page 13 (index 12)
   });
+
+  it("scrollToPage sets scrollTop at the page's top edge including PAGE_TOP_GAP offset", async () => {
+    // At 75% zoom: pageWidth = round(612*75/100) = 459, rendered_h = round(792/612*459) = 594, slot = 610.
+    // Page 1 top in DOM = PAGE_TOP_GAP + slot0 = 16 + 610 = 626.
+    // scrollToPage(1) must set scrollTop = 626 so the page aligns to the viewport top.
+    const ref = createRef<PageViewerHandle>();
+    const { container } = render(<PageViewer ref={ref} docId={1} pageSizes={PAGES_5} />);
+    const scrollEl = container.firstElementChild as HTMLDivElement;
+
+    await act(async () => {
+      ref.current?.scrollToPage(1);
+    });
+
+    expect(scrollEl.scrollTop).toBe(626);
+  });
 });
 
 describe("PageViewer — natural scroll active page detection", () => {

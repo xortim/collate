@@ -25,6 +25,23 @@ describe("isDirty", () => {
     useAppStore.getState().setIsDirty(false);
     expect(useAppStore.getState().isDirty).toBe(false);
   });
+
+  it("setIsDirty(true) also marks the active tab's isDirty in the tabs array", () => {
+    useAppStore.setState({ tabs: [], activeDocId: null, docViewStates: new Map() });
+    useAppStore.getState().addTab(MANIFEST_A);
+    useAppStore.getState().setIsDirty(true);
+    const tab = useAppStore.getState().tabs.find((t) => t.docId === 1);
+    expect(tab?.isDirty).toBe(true);
+  });
+
+  it("setIsDirty(false) also clears the active tab's isDirty in the tabs array", () => {
+    useAppStore.setState({ tabs: [], activeDocId: null, docViewStates: new Map() });
+    useAppStore.getState().addTab(MANIFEST_A);
+    useAppStore.getState().setIsDirty(true);
+    useAppStore.getState().setIsDirty(false);
+    const tab = useAppStore.getState().tabs.find((t) => t.docId === 1);
+    expect(tab?.isDirty).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
