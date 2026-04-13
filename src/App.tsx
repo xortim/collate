@@ -15,7 +15,6 @@ import { PageSidebar } from "./components/PageSidebar";
 import { TabBar } from "./components/TabBar";
 import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
-import { Separator } from "@/components/ui/separator";
 import { Toaster } from "@/components/ui/sonner";
 import {
   Sidebar,
@@ -421,8 +420,6 @@ function App() {
             onReorder={reorderTabs}
           />
         )}
-
-        <Separator />
 
         <div className="relative flex-1 overflow-hidden min-h-0">
           {activeTab ? (
