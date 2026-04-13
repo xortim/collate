@@ -1,12 +1,16 @@
+import { useState } from "react";
 import { X } from "lucide-react";
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   useSensor,
   useSensors,
   closestCenter,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -32,14 +36,26 @@ interface SortableTabProps {
   onClose(docId: number): void;
 }
 
+/** Shared tab content — rendered both in SortableTab and DragOverlay. */
+function TabContent({ tab }: { tab: TabEntry }) {
+  return (
+    <>
+      {tab.isDirty && (
+        <span aria-label="unsaved changes" className="size-1.5 rounded-full bg-amber-400 shrink-0" />
+      )}
+      <span title={tab.filename}>{middleTruncate(tab.filename, 24)}</span>
+      {/* Close button is rendered separately in SortableTab; omitted here intentionally */}
+    </>
+  );
+}
+
 function SortableTab({ tab, isActive, onSwitch, onClose }: SortableTabProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: tab.docId });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : undefined,
   };
 
   return (
@@ -53,16 +69,14 @@ function SortableTab({ tab, isActive, onSwitch, onClose }: SortableTabProps) {
       tabIndex={isActive ? 0 : -1}
       onClick={() => onSwitch(tab.docId)}
       className={cn(
-        "flex items-center gap-1.5 px-3 h-full text-sm whitespace-nowrap border-r border-border/50 select-none cursor-grab active:cursor-grabbing",
+        "inline-flex items-center gap-1.5 px-3 h-7 text-sm font-medium whitespace-nowrap border-t-2 select-none cursor-grab active:cursor-grabbing transition-colors",
+        isDragging && "opacity-0",
         isActive
-          ? "bg-background text-foreground border-b-2 border-b-primary -mb-px"
-          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          ? "bg-muted text-foreground border-primary"
+          : "bg-tab-inactive text-muted-foreground border-transparent hover:bg-muted hover:text-foreground"
       )}
     >
-      {tab.isDirty && (
-        <span aria-label="unsaved changes" className="size-1.5 rounded-full bg-amber-400 shrink-0" />
-      )}
-      <span title={tab.filename}>{middleTruncate(tab.filename, 24)}</span>
+      <TabContent tab={tab} />
       <button
         type="button"
         aria-label={`Close ${tab.filename}`}
@@ -79,11 +93,19 @@ function SortableTab({ tab, isActive, onSwitch, onClose }: SortableTabProps) {
 }
 
 export function TabBar({ tabs, activeDocId, onSwitch, onClose, onReorder }: TabBarProps) {
+  const [activeId, setActiveId] = useState<number | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   if (tabs.length === 0) return null;
 
+  const activeTab = activeId !== null ? tabs.find((t) => t.docId === activeId) : null;
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(event.active.id as number);
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const fromIndex = tabs.findIndex((t) => t.docId === active.id);
@@ -93,13 +115,24 @@ export function TabBar({ tabs, activeDocId, onSwitch, onClose, onReorder }: TabB
     }
   }
 
+  function handleDragCancel() {
+    setActiveId(null);
+  }
+
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={[restrictToHorizontalAxis]}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
       <SortableContext items={tabs.map((t) => t.docId)} strategy={horizontalListSortingStrategy}>
         <div
           role="tablist"
           aria-label="Open documents"
-          className="flex h-8 shrink-0 overflow-x-auto border-b bg-muted/30"
+          className="flex shrink-0 overflow-x-auto items-end bg-background pt-1 px-2 gap-[3px]"
         >
           {tabs.map((tab) => (
             <SortableTab
@@ -112,6 +145,17 @@ export function TabBar({ tabs, activeDocId, onSwitch, onClose, onReorder }: TabB
           ))}
         </div>
       </SortableContext>
+
+      <DragOverlay dropAnimation={null}>
+        {activeTab && (
+          <div className="inline-flex items-center gap-1.5 px-3 h-7 text-sm font-medium whitespace-nowrap border-t-2 bg-tab-inactive text-muted-foreground border-transparent cursor-grabbing shadow-md">
+            <TabContent tab={activeTab} />
+            <span className="ml-0.5 p-0.5">
+              <X className="size-3" />
+            </span>
+          </div>
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }

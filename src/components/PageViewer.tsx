@@ -21,6 +21,9 @@ export interface PageViewerHandle {
 /** Gap between pages in pixels. */
 const PAGE_GAP = 16;
 
+/** Extra space above the first page so content isn't cramped against the tab bar. */
+const PAGE_TOP_GAP = 28;
+
 /** Horizontal padding around pages in fit-width mode (16px each side). */
 const PAGE_PADDING_X = 32;
 
@@ -190,7 +193,7 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
       scrollToPage(index) {
         const el = parentRef.current;
         if (!el) return;
-        let offset = PAGE_GAP;
+        let offset = PAGE_TOP_GAP;
         for (let i = 0; i < index; i++) {
           const { width_pts, height_pts } = pageSizes[i];
           offset += Math.round((height_pts / width_pts) * pageWidthFor(width_pts)) + PAGE_GAP;
@@ -279,7 +282,7 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
       <div
         ref={parentRef}
         className={cn(
-          "h-full bg-zinc-200 dark:bg-zinc-800",
+          "h-full bg-muted",
           zoomMode === "fit-width" ? "overflow-y-auto" : "overflow-auto"
         )}
       >
@@ -287,7 +290,7 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
         <div
           className="relative w-full"
           style={{
-            height: virtualizer.getTotalSize() + PAGE_GAP,
+            height: virtualizer.getTotalSize() + PAGE_TOP_GAP,
             minWidth: manualContentWidth,
           }}
         >
@@ -305,7 +308,7 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
               <div
                 key={item.key}
                 className="absolute left-0 right-0"
-                style={{ top: item.start + PAGE_GAP, paddingBottom: PAGE_GAP }}
+                style={{ top: item.start + PAGE_TOP_GAP, paddingBottom: PAGE_GAP }}
               >
                 {/* mx-auto centers the page when it's narrower than the viewport. */}
                 <div style={{ width: pageWidth, margin: "0 auto" }}>

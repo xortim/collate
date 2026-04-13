@@ -383,7 +383,7 @@ function App() {
     // strip appropriate for page thumbnails.
     <SidebarProvider
       defaultOpen={true}
-      className="h-screen overflow-hidden"
+      className="h-screen overflow-hidden overscroll-none"
       style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
     >
       {activeTab && (
