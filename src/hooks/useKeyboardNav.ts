@@ -8,6 +8,11 @@ interface Options {
   sidebarRef: RefObject<HTMLElement | null>;
 }
 
+/** Returns true when el has no collapsed sidebar ancestor (shadcn sets data-state="collapsed" on the aside). */
+function isSidebarVisible(el: HTMLElement): boolean {
+  return el.closest('[data-state="collapsed"]') === null;
+}
+
 function isInputFocused(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
@@ -62,7 +67,9 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "j" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         pageViewerRef.current?.scrollToPage(Math.min(activePage + 1, pageCount - 1));
-        sidebarRef.current?.focus();
+        if (sidebarRef.current && isSidebarVisible(sidebarRef.current)) {
+          sidebarRef.current.focus();
+        }
         return;
       }
 
@@ -70,7 +77,9 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "k" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         pageViewerRef.current?.scrollToPage(Math.max(activePage - 1, 0));
-        sidebarRef.current?.focus();
+        if (sidebarRef.current && isSidebarVisible(sidebarRef.current)) {
+          sidebarRef.current.focus();
+        }
         return;
       }
 
@@ -152,7 +161,6 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
 
       // Escape — clear selection
       if (e.key === "Escape") {
-        e.preventDefault();
         state.clearSelection();
         return;
       }

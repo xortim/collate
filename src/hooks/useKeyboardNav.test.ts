@@ -112,6 +112,34 @@ describe("j / PageDown — next page", () => {
     fireKey("j");
     expect(scrollToPage).toHaveBeenCalledWith(9);
   });
+
+  it("j does not focus sidebar when sidebar ancestor has data-state=collapsed", () => {
+    const collapsed = document.createElement("div");
+    collapsed.dataset.state = "collapsed";
+    const sidebarEl = document.createElement("div");
+    sidebarEl.tabIndex = -1;
+    collapsed.appendChild(sidebarEl);
+    document.body.appendChild(collapsed);
+    const { pageViewerRef, sidebarRef } = makeRefs(sidebarEl);
+    renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
+    fireKey("j");
+    expect(document.activeElement).not.toBe(sidebarEl);
+    document.body.removeChild(collapsed);
+  });
+
+  it("j focuses sidebar when sidebar ancestor has data-state=expanded", () => {
+    const expanded = document.createElement("div");
+    expanded.dataset.state = "expanded";
+    const sidebarEl = document.createElement("div");
+    sidebarEl.tabIndex = -1;
+    expanded.appendChild(sidebarEl);
+    document.body.appendChild(expanded);
+    const { pageViewerRef, sidebarRef } = makeRefs(sidebarEl);
+    renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
+    fireKey("j");
+    expect(document.activeElement).toBe(sidebarEl);
+    document.body.removeChild(expanded);
+  });
 });
 
 describe("k / PageUp — previous page", () => {
@@ -146,6 +174,21 @@ describe("k / PageUp — previous page", () => {
     renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
     fireKey("k");
     expect(scrollToPage).toHaveBeenCalledWith(0);
+  });
+
+  it("k does not focus sidebar when sidebar ancestor has data-state=collapsed", () => {
+    useAppStore.setState({ activePage: 5 });
+    const collapsed = document.createElement("div");
+    collapsed.dataset.state = "collapsed";
+    const sidebarEl = document.createElement("div");
+    sidebarEl.tabIndex = -1;
+    collapsed.appendChild(sidebarEl);
+    document.body.appendChild(collapsed);
+    const { pageViewerRef, sidebarRef } = makeRefs(sidebarEl);
+    renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
+    fireKey("k");
+    expect(document.activeElement).not.toBe(sidebarEl);
+    document.body.removeChild(collapsed);
   });
 });
 
@@ -321,5 +364,15 @@ describe("Escape — clear selection", () => {
     useAppStore.setState({ selectedPages: new Set(), selectionAnchor: null });
     fireKey("Escape");
     expect(useAppStore.getState().selectedPages.size).toBe(0);
+  });
+
+  it("Escape does not call e.preventDefault()", () => {
+    const { pageViewerRef, sidebarRef } = makeRefs();
+    renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
+    useAppStore.setState({ selectedPages: new Set([1, 2]), selectionAnchor: 1 });
+    const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    const spy = vi.spyOn(event, "preventDefault");
+    window.dispatchEvent(event);
+    expect(spy).not.toHaveBeenCalled();
   });
 });
