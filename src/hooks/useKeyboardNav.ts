@@ -62,6 +62,7 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "j" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         pageViewerRef.current?.scrollToPage(Math.min(activePage + 1, pageCount - 1));
+        sidebarRef.current?.focus();
         return;
       }
 
@@ -69,6 +70,7 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "k" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         pageViewerRef.current?.scrollToPage(Math.max(activePage - 1, 0));
+        sidebarRef.current?.focus();
         return;
       }
 
@@ -76,6 +78,7 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "J" && !e.metaKey && !e.ctrlKey) {
         if (!sidebarFocused) return;
         e.preventDefault();
+        if (state.selectionAnchor === null) state.setSelectionAnchor(activePage);
         const anchor = state.selectionAnchor ?? activePage;
         const cursor = Math.min(activePage + 1, pageCount - 1);
         state.setActivePage(cursor);
@@ -87,6 +90,7 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "K" && !e.metaKey && !e.ctrlKey) {
         if (!sidebarFocused) return;
         e.preventDefault();
+        if (state.selectionAnchor === null) state.setSelectionAnchor(activePage);
         const anchor = state.selectionAnchor ?? activePage;
         const cursor = Math.max(activePage - 1, 0);
         state.setActivePage(cursor);
@@ -126,6 +130,7 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "ArrowDown" && e.shiftKey && !e.metaKey && !e.ctrlKey) {
         if (!sidebarFocused) return;
         e.preventDefault();
+        if (state.selectionAnchor === null) state.setSelectionAnchor(activePage);
         const anchor = state.selectionAnchor ?? activePage;
         const cursor = Math.min(activePage + 1, pageCount - 1);
         state.setActivePage(cursor);
@@ -137,10 +142,18 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "ArrowUp" && e.shiftKey && !e.metaKey && !e.ctrlKey) {
         if (!sidebarFocused) return;
         e.preventDefault();
+        if (state.selectionAnchor === null) state.setSelectionAnchor(activePage);
         const anchor = state.selectionAnchor ?? activePage;
         const cursor = Math.max(activePage - 1, 0);
         state.setActivePage(cursor);
         state.selectPageRange(anchor, cursor);
+        return;
+      }
+
+      // Escape — clear selection
+      if (e.key === "Escape") {
+        e.preventDefault();
+        state.clearSelection();
         return;
       }
     }

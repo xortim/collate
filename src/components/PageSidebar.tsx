@@ -59,6 +59,7 @@ export function PageSidebar({ docId, pageSizes, onScrollToPage, onBugReport, con
         setSelectionAnchor(index);
         onScrollToPage(index);
       }
+      containerRef.current?.focus();
     },
     [togglePageSelection, selectPageRange, clearSelection, setSelectionAnchor, onScrollToPage]
   );
@@ -112,7 +113,7 @@ export function PageSidebar({ docId, pageSizes, onScrollToPage, onBugReport, con
       </SidebarHeader>
       <SidebarContent className="overflow-hidden p-0">
         {/* containerRef drives both ResizeObserver and the virtualizer. */}
-        <div ref={containerRef} className="h-full overflow-y-auto py-2 pl-3 pr-6">
+        <div ref={containerRef} tabIndex={-1} className="h-full overflow-y-auto py-2 pl-3 pr-6 focus:outline-none">
           <div
             className="relative w-full"
             style={{ height: thumbVirtualizer.getTotalSize() }}

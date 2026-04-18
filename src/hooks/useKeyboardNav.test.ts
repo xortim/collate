@@ -94,6 +94,17 @@ describe("j / PageDown — next page", () => {
     expect(scrollToPage).toHaveBeenCalledWith(6);
   });
 
+  it("j focuses the sidebar container", () => {
+    const sidebarEl = document.createElement("div");
+    sidebarEl.setAttribute("tabindex", "-1");
+    document.body.appendChild(sidebarEl);
+    const { pageViewerRef, sidebarRef } = makeRefs(sidebarEl);
+    renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
+    fireKey("j");
+    expect(document.activeElement).toBe(sidebarEl);
+    document.body.removeChild(sidebarEl);
+  });
+
   it("j clamps at last page", () => {
     useAppStore.setState({ activePage: 9 }); // last page (pageCount=10)
     const { scrollToPage, pageViewerRef, sidebarRef } = makeRefs();
@@ -116,6 +127,17 @@ describe("k / PageUp — previous page", () => {
     renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
     fireKey("PageUp");
     expect(scrollToPage).toHaveBeenCalledWith(4);
+  });
+
+  it("k focuses the sidebar container", () => {
+    const sidebarEl = document.createElement("div");
+    sidebarEl.setAttribute("tabindex", "-1");
+    document.body.appendChild(sidebarEl);
+    const { pageViewerRef, sidebarRef } = makeRefs(sidebarEl);
+    renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
+    fireKey("k");
+    expect(document.activeElement).toBe(sidebarEl);
+    document.body.removeChild(sidebarEl);
   });
 
   it("k clamps at first page", () => {
@@ -255,5 +277,49 @@ describe("selection expansion — sidebar guard", () => {
     const pages = [...useAppStore.getState().selectedPages].sort((a, b) => a - b);
     expect(pages).toEqual([3, 4]);
     cleanup();
+  });
+
+  it("J pressed twice keeps original anchor and grows selection", () => {
+    const { sidebarEl, cleanup } = makeSidebarSetup();
+    const { pageViewerRef, sidebarRef } = makeRefs(sidebarEl);
+    renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
+    useAppStore.setState({ activePage: 5, selectionAnchor: null });
+    fireKey("J");
+    fireKey("J");
+    const pages = [...useAppStore.getState().selectedPages].sort((a, b) => a - b);
+    expect(pages).toEqual([5, 6, 7]);
+    cleanup();
+  });
+
+  it("Shift+ArrowDown pressed twice keeps original anchor and grows selection", () => {
+    const { sidebarEl, cleanup } = makeSidebarSetup();
+    const { pageViewerRef, sidebarRef } = makeRefs(sidebarEl);
+    renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
+    useAppStore.setState({ activePage: 5, selectionAnchor: null });
+    fireKey("ArrowDown", { shiftKey: true });
+    fireKey("ArrowDown", { shiftKey: true });
+    const pages = [...useAppStore.getState().selectedPages].sort((a, b) => a - b);
+    expect(pages).toEqual([5, 6, 7]);
+    cleanup();
+  });
+});
+
+describe("Escape — clear selection", () => {
+  it("Escape clears selectedPages and selectionAnchor", () => {
+    const { scrollToPage, pageViewerRef, sidebarRef } = makeRefs();
+    renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
+    useAppStore.setState({ selectedPages: new Set([1, 2, 3]), selectionAnchor: 2 });
+    fireKey("Escape");
+    expect(useAppStore.getState().selectedPages.size).toBe(0);
+    expect(useAppStore.getState().selectionAnchor).toBeNull();
+    void scrollToPage; // unused
+  });
+
+  it("Escape is a no-op when nothing is selected", () => {
+    const { pageViewerRef, sidebarRef } = makeRefs();
+    renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
+    useAppStore.setState({ selectedPages: new Set(), selectionAnchor: null });
+    fireKey("Escape");
+    expect(useAppStore.getState().selectedPages.size).toBe(0);
   });
 });
