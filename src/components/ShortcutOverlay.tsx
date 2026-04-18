@@ -175,12 +175,12 @@ export function ShortcutOverlay({ open, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md flex flex-col max-h-[calc(100dvh-2rem)]">
         <DialogHeader>
           <DialogTitle>Keyboard Shortcuts</DialogTitle>
         </DialogHeader>
 
-        <div className="mt-2 space-y-5">
+        <div className="mt-2 space-y-5 flex-1 min-h-0 overflow-y-auto pr-4">
           {sections.map((section) =>
             section.kind === "dual" ? (
               <DualSectionView key={section.label} section={section} />
