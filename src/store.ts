@@ -13,6 +13,7 @@ export interface DocViewState {
   zoomMode: ZoomMode;
   selectedPages: ReadonlySet<number>;
   isDirty: boolean;
+  selectionAnchor: number | null;
 }
 
 export const DEFAULT_DOC_VIEW_STATE: DocViewState = {
@@ -21,6 +22,7 @@ export const DEFAULT_DOC_VIEW_STATE: DocViewState = {
   zoomMode: "manual",
   selectedPages: new Set(),
   isDirty: false,
+  selectionAnchor: null,
 };
 
 export interface TabEntry {
@@ -58,6 +60,8 @@ interface AppStore {
   selectPageRange(from: number, to: number): void;
   clearSelection(): void;
   selectAll(count: number): void;
+  selectionAnchor: number | null;
+  setSelectionAnchor: (i: number | null) => void;
 
   // Persistent preferences
   sidebarWidth: number;
@@ -84,6 +88,7 @@ function captureViewState(s: AppStore): DocViewState {
     zoomMode: s.zoomMode,
     selectedPages: s.selectedPages,
     isDirty: s.isDirty,
+    selectionAnchor: s.selectionAnchor,
   };
 }
 
@@ -215,12 +220,14 @@ export const useAppStore = create<AppStore>()(
         for (let i = lo; i <= hi; i++) next.add(i);
         set({ selectedPages: next });
       },
-      clearSelection: () => set({ selectedPages: new Set<number>() }),
+      clearSelection: () => set({ selectedPages: new Set<number>(), selectionAnchor: null }),
       selectAll: (count) => {
         const next = new Set<number>();
         for (let i = 0; i < count; i++) next.add(i);
         set({ selectedPages: next });
       },
+      selectionAnchor: null,
+      setSelectionAnchor: (i) => set({ selectionAnchor: i }),
 
       // Persistent preferences
       sidebarWidth: 160,

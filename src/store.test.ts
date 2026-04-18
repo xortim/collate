@@ -427,3 +427,59 @@ describe("infoPanelOpen", () => {
     expect(useAppStore.getState().infoPanelOpen).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// selectionAnchor
+// ---------------------------------------------------------------------------
+
+describe("selectionAnchor", () => {
+  beforeEach(() => {
+    useAppStore.setState({ selectionAnchor: null, selectedPages: new Set() });
+  });
+
+  it("starts null", () => {
+    expect(useAppStore.getState().selectionAnchor).toBeNull();
+  });
+
+  it("setSelectionAnchor(3) sets anchor to 3", () => {
+    useAppStore.getState().setSelectionAnchor(3);
+    expect(useAppStore.getState().selectionAnchor).toBe(3);
+  });
+
+  it("setSelectionAnchor(null) clears the anchor", () => {
+    useAppStore.setState({ selectionAnchor: 5 });
+    useAppStore.getState().setSelectionAnchor(null);
+    expect(useAppStore.getState().selectionAnchor).toBeNull();
+  });
+
+  it("clearSelection() also resets selectionAnchor to null", () => {
+    useAppStore.setState({ selectionAnchor: 2, selectedPages: new Set([1, 2, 3]) });
+    useAppStore.getState().clearSelection();
+    expect(useAppStore.getState().selectedPages.size).toBe(0);
+    expect(useAppStore.getState().selectionAnchor).toBeNull();
+  });
+
+  it("selectionAnchor is saved and restored on tab switch", () => {
+    useAppStore.setState({
+      tabs: [],
+      activeDocId: null,
+      docViewStates: new Map(),
+      activePage: 0,
+      zoom: 75,
+      zoomMode: "manual",
+      selectedPages: new Set(),
+      isDirty: false,
+      selectionAnchor: null,
+    });
+    useAppStore.getState().addTab(MANIFEST_A);
+    useAppStore.getState().setSelectionAnchor(4);
+
+    useAppStore.getState().addTab(MANIFEST_B);
+    // anchor should reset for new doc
+    expect(useAppStore.getState().selectionAnchor).toBeNull();
+
+    // switch back to A
+    useAppStore.getState().setActiveDocId(1);
+    expect(useAppStore.getState().selectionAnchor).toBe(4);
+  });
+});
