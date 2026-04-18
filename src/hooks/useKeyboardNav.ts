@@ -59,14 +59,14 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       }
 
       // j — next page
-      if (e.key === "j" && !e.metaKey && !e.ctrlKey) {
+      if (e.key === "j" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         pageViewerRef.current?.scrollToPage(Math.min(activePage + 1, pageCount - 1));
         return;
       }
 
       // k — previous page
-      if (e.key === "k" && !e.metaKey && !e.ctrlKey) {
+      if (e.key === "k" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         pageViewerRef.current?.scrollToPage(Math.max(activePage - 1, 0));
         return;
@@ -76,11 +76,10 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "J" && !e.metaKey && !e.ctrlKey) {
         if (!sidebarFocused) return;
         e.preventDefault();
-        const { selectionAnchor } = useAppStore.getState();
-        const anchor = selectionAnchor ?? activePage;
+        const anchor = state.selectionAnchor ?? activePage;
         const cursor = Math.min(activePage + 1, pageCount - 1);
-        useAppStore.getState().setActivePage(cursor);
-        useAppStore.getState().selectPageRange(anchor, cursor);
+        state.setActivePage(cursor);
+        state.selectPageRange(anchor, cursor);
         return;
       }
 
@@ -88,11 +87,10 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "K" && !e.metaKey && !e.ctrlKey) {
         if (!sidebarFocused) return;
         e.preventDefault();
-        const { selectionAnchor } = useAppStore.getState();
-        const anchor = selectionAnchor ?? activePage;
+        const anchor = state.selectionAnchor ?? activePage;
         const cursor = Math.max(activePage - 1, 0);
-        useAppStore.getState().setActivePage(cursor);
-        useAppStore.getState().selectPageRange(anchor, cursor);
+        state.setActivePage(cursor);
+        state.selectPageRange(anchor, cursor);
         return;
       }
 
@@ -128,11 +126,10 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "ArrowDown" && e.shiftKey && !e.metaKey && !e.ctrlKey) {
         if (!sidebarFocused) return;
         e.preventDefault();
-        const { selectionAnchor } = useAppStore.getState();
-        const anchor = selectionAnchor ?? activePage;
+        const anchor = state.selectionAnchor ?? activePage;
         const cursor = Math.min(activePage + 1, pageCount - 1);
-        useAppStore.getState().setActivePage(cursor);
-        useAppStore.getState().selectPageRange(anchor, cursor);
+        state.setActivePage(cursor);
+        state.selectPageRange(anchor, cursor);
         return;
       }
 
@@ -140,11 +137,10 @@ export function useKeyboardNav({ pageViewerRef, sidebarRef }: Options): void {
       if (e.key === "ArrowUp" && e.shiftKey && !e.metaKey && !e.ctrlKey) {
         if (!sidebarFocused) return;
         e.preventDefault();
-        const { selectionAnchor } = useAppStore.getState();
-        const anchor = selectionAnchor ?? activePage;
+        const anchor = state.selectionAnchor ?? activePage;
         const cursor = Math.max(activePage - 1, 0);
-        useAppStore.getState().setActivePage(cursor);
-        useAppStore.getState().selectPageRange(anchor, cursor);
+        state.setActivePage(cursor);
+        state.selectPageRange(anchor, cursor);
         return;
       }
     }

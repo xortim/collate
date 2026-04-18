@@ -54,6 +54,16 @@ describe("page navigation — no document open", () => {
     fireKey("j");
     expect(scrollToPage).not.toHaveBeenCalled();
   });
+
+  it("does not call scrollToPage when pageCount is 0", () => {
+    useAppStore.setState({
+      tabs: [{ ...useAppStore.getState().tabs[0], pageCount: 0 }],
+    });
+    const { scrollToPage, pageViewerRef, sidebarRef } = makeRefs();
+    renderHook(() => useKeyboardNav({ pageViewerRef, sidebarRef }));
+    fireKey("j");
+    expect(scrollToPage).not.toHaveBeenCalled();
+  });
 });
 
 describe("page navigation — input guard", () => {
