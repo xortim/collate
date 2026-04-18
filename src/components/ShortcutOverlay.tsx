@@ -93,9 +93,9 @@ function buildSections(): Section[] {
       kind: "dual",
       label: "Selection",
       rows: [
-        { action: "Select All",    standard: `${mod}A`, vim: null },
-        { action: "Expand down",   standard: "⇧↓",      vim: "⇧j" },
-        { action: "Expand up",     standard: "⇧↑",      vim: "⇧k" },
+        { action: "Select All",    standard: `${mod}A`,                  vim: null },
+        { action: "Expand down",   standard: isMac ? "⇧↓" : "Shift+↓", vim: "J" },
+        { action: "Expand up",     standard: isMac ? "⇧↑" : "Shift+↑", vim: "K" },
       ],
     },
     {
