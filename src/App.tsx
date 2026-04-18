@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAppStore, ZOOM_STEPS, PageDisplay, TabEntry } from "@/store";
 import { useTheme } from "@/hooks/useTheme";
+import { useKeyboardNav } from "@/hooks/useKeyboardNav";
 import { platformName } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { DocumentManifest } from "@/types";
@@ -37,6 +38,7 @@ function App() {
   const viewerRef = useRef<PageViewerHandle>(null);
   // Stable ref for use inside event listener closures
   const activeTabRef = useRef<TabEntry | null>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
   const tabs = useAppStore((s) => s.tabs);
   const activeDocId = useAppStore((s) => s.activeDocId);
@@ -52,6 +54,7 @@ function App() {
 
   // Apply theme (dark class on <html>) and keep it in sync with OS changes
   useTheme();
+  useKeyboardNav({ pageViewerRef: viewerRef, sidebarRef });
 
   // Keep ref in sync so event listeners always see the current active tab
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
@@ -392,6 +395,7 @@ function App() {
             pageSizes={activeTab.pageSizes}
             onScrollToPage={(i) => viewerRef.current?.scrollToPage(i)}
             onBugReport={openBugReportForError}
+            containerRef={sidebarRef}
           />
         </Sidebar>
       )}

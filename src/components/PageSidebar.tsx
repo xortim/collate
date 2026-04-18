@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   SidebarContent,
@@ -18,6 +19,7 @@ interface Props {
   pageSizes: PageSize[];
   onScrollToPage(index: number): void;
   onBugReport(message: string): void;
+  containerRef?: RefObject<HTMLDivElement | null>;
 }
 
 /** Gap between thumbnails in pixels. */
@@ -32,32 +34,33 @@ const THUMBNAIL_GAP = 16;
  * width — including after the user resizes the window. The same ref drives
  * both the observer and the virtualizer's scroll container.
  */
-export function PageSidebar({ docId, pageSizes, onScrollToPage, onBugReport }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
+export function PageSidebar({ docId, pageSizes, onScrollToPage, onBugReport, containerRef: externalRef }: Props) {
+  const internalRef = useRef<HTMLDivElement>(null);
+  const containerRef = externalRef ?? internalRef;
   const [thumbnailWidth, setThumbnailWidth] = useState(120);
-
-  // Range-select anchor — tracked in a ref to avoid re-renders.
-  const anchorRef = useRef(0);
 
   const selectedPages = useAppStore((s) => s.selectedPages);
   const togglePageSelection = useAppStore((s) => s.togglePageSelection);
   const selectPageRange = useAppStore((s) => s.selectPageRange);
   const clearSelection = useAppStore((s) => s.clearSelection);
+  const setSelectionAnchor = useAppStore((s) => s.setSelectionAnchor);
 
   const handleThumbClick = useCallback(
     (index: number, e: React.MouseEvent) => {
       if (e.metaKey || e.ctrlKey) {
+        const isAdding = !useAppStore.getState().selectedPages.has(index);
         togglePageSelection(index);
-        anchorRef.current = index;
+        if (isAdding) setSelectionAnchor(index);
       } else if (e.shiftKey) {
-        selectPageRange(anchorRef.current, index);
+        const anchor = useAppStore.getState().selectionAnchor ?? index;
+        selectPageRange(anchor, index);
       } else {
         clearSelection();
+        setSelectionAnchor(index);
         onScrollToPage(index);
-        anchorRef.current = index;
       }
     },
-    [togglePageSelection, selectPageRange, clearSelection, onScrollToPage]
+    [togglePageSelection, selectPageRange, clearSelection, setSelectionAnchor, onScrollToPage]
   );
 
   // Measure available content width and update thumbnails when it changes.
