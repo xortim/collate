@@ -193,7 +193,7 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
       scrollToPage(index) {
         const el = parentRef.current;
         if (!el) return;
-        let offset = PAGE_TOP_GAP;
+        let offset = 0;
         for (let i = 0; i < index; i++) {
           const { width_pts, height_pts } = pageSizes[i];
           offset += Math.round((height_pts / width_pts) * pageWidthFor(width_pts)) + PAGE_GAP;
