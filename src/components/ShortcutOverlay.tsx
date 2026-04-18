@@ -143,6 +143,7 @@ function DualSectionView({ section }: { section: DualSection }) {
         {section.label}
       </p>
       {/* Column headers */}
+      {/* grid-cols must match data row below */}
       <div className="mb-1 grid grid-cols-[1fr_88px_56px] gap-x-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
         <span />
         <span className="text-right">Standard</span>
@@ -154,6 +155,7 @@ function DualSectionView({ section }: { section: DualSection }) {
             key={row.action}
             className="grid grid-cols-[1fr_88px_56px] items-center gap-x-2 text-sm"
           >
+            {/* grid-cols must match header row above */}
             <span>{row.action}</span>
             <div className="flex justify-end">
               {row.standard ? <Kbd>{row.standard}</Kbd> : <span className="text-muted-foreground/40">—</span>}
