@@ -17,6 +17,7 @@ lib/
 
 # Claude Code local settings (personal overrides, not for team)
 .claude/settings.local.json
+.superpowers/
 
 # Editor directories and files
 .vscode/*
