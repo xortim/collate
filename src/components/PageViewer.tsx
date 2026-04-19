@@ -1,5 +1,6 @@
-import React, { useEffect, useImperativeHandle, useRef } from "react";
+import React, { useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { listen } from "@tauri-apps/api/event";
 import { cn } from "@/lib/utils";
 import { PageImage } from "./PageImage";
 import { FindBar } from "./FindBar";
@@ -61,8 +62,15 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
     // useFindBar receives a stable wrapper around this ref so its useCallback
     // deps don't change on every render. useImperativeHandle delegates to it too.
     const scrollToPageRef = useRef<(index: number) => void>(() => {});
+    // Stable wrapper: identity never changes so useFindBar's useCallback deps
+    // don't invalidate on every render, even though scrollToPageRef.current
+    // is updated every render with the latest pageSizes / pageWidthFor values.
+    const stableScrollToPage = useCallback(
+      (idx: number) => scrollToPageRef.current(idx),
+      []
+    );
     const { state: findState, openFind, closeFind, setQuery, next, prev, highlightsForPage } =
-      useFindBar(docId, (idx) => scrollToPageRef.current(idx));
+      useFindBar(docId, stableScrollToPage);
 
     // Refs for use inside stable closures (virtualizer, event listeners).
     const zoomRef = useRef(zoom);
@@ -200,6 +208,14 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
       }
       document.addEventListener("keydown", onKeyDown);
       return () => document.removeEventListener("keydown", onKeyDown);
+    }, [openFind]);
+
+    // Edit → Find… menu item: same as Cmd+F.
+    useEffect(() => {
+      const unlisten = listen<void>("menu-find", () => openFind());
+      return () => {
+        unlisten.then((fn) => fn());
+      };
     }, [openFind]);
 
     // Keep scrollToPageRef pointing at the real implementation on every render.

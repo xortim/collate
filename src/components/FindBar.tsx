@@ -66,13 +66,7 @@ export function FindBar({
   return (
     <div
       role="search"
-      style={{
-        position: "absolute",
-        top: 8,
-        right: 8,
-        zIndex: 50,
-      }}
-      className="flex items-center gap-1 rounded-md border bg-background shadow-lg px-2 py-1"
+      className="absolute top-2 right-2 z-50 flex items-center gap-1 rounded-md border bg-background shadow-lg px-2 py-1"
     >
       <Input
         ref={inputRef}
@@ -81,7 +75,7 @@ export function FindBar({
         placeholder="Find in document…"
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
-        className="h-7 w-48 text-xs border-0 shadow-none focus-visible:ring-0 px-1"
+        className="h-8 w-48 text-xs border-0 shadow-none focus-visible:ring-0 px-1"
         aria-label="Find in document"
       />
 
@@ -94,7 +88,6 @@ export function FindBar({
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6"
         onClick={onPrev}
         disabled={!hasMatches}
         aria-label="Previous match"
@@ -105,7 +98,6 @@ export function FindBar({
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6"
         onClick={onNext}
         disabled={!hasMatches}
         aria-label="Next match"
@@ -116,7 +108,6 @@ export function FindBar({
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6"
         onClick={onClose}
         aria-label="Close find bar"
       >

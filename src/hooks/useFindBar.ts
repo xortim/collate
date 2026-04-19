@@ -32,11 +32,18 @@ export function useFindBar(docId: number | null, scrollToPage: (index: number) =
     currentMatchIndex: 0,
   });
 
+  // Keep a ref to the current state so next()/prev() can read matches and
+  // currentMatchIndex synchronously without a stale closure and without
+  // placing `state` in their useCallback dep arrays (which would recreate
+  // them on every render).
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const search = useCallback(
     async (query: string) => {
-      if (!docId || query.trim() === "") {
+      if (docId == null || query.trim() === "") {
         setState((s) => ({ ...s, matches: [], currentMatchIndex: 0 }));
         return;
       }
@@ -73,21 +80,19 @@ export function useFindBar(docId: number | null, scrollToPage: (index: number) =
   }, []);
 
   const next = useCallback(() => {
-    setState((s) => {
-      if (s.matches.length === 0) return s;
-      const nextIdx = (s.currentMatchIndex + 1) % s.matches.length;
-      scrollToPage(s.matches[nextIdx].page_index);
-      return { ...s, currentMatchIndex: nextIdx };
-    });
+    const s = stateRef.current;
+    if (s.matches.length === 0) return;
+    const nextIdx = (s.currentMatchIndex + 1) % s.matches.length;
+    setState((prev) => ({ ...prev, currentMatchIndex: nextIdx }));
+    scrollToPage(s.matches[nextIdx].page_index);
   }, [scrollToPage]);
 
   const prev = useCallback(() => {
-    setState((s) => {
-      if (s.matches.length === 0) return s;
-      const prevIdx = (s.currentMatchIndex - 1 + s.matches.length) % s.matches.length;
-      scrollToPage(s.matches[prevIdx].page_index);
-      return { ...s, currentMatchIndex: prevIdx };
-    });
+    const s = stateRef.current;
+    if (s.matches.length === 0) return;
+    const prevIdx = (s.currentMatchIndex - 1 + s.matches.length) % s.matches.length;
+    setState((prev) => ({ ...prev, currentMatchIndex: prevIdx }));
+    scrollToPage(s.matches[prevIdx].page_index);
   }, [scrollToPage]);
 
   /** Returns a Set of word indices to highlight on the given page. */

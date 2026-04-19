@@ -39,6 +39,8 @@ export function useTextLayer(docId: number | null, pageIndex: number) {
   const [loading, setLoading] = useState(
     () => cacheKey == null || !cache.has(cacheKey)
   );
+  // Incrementing this triggers the fetch effect to re-run after mutation.
+  const [fetchTrigger, setFetchTrigger] = useState(0);
 
   // Track the current key so the effect cleanup can ignore stale responses.
   const keyRef = useRef(cacheKey);
@@ -70,7 +72,7 @@ export function useTextLayer(docId: number | null, pageIndex: number) {
         if (keyRef.current !== key) return;
         setLoading(false);
       });
-  }, [docId, pageIndex]);
+  }, [docId, pageIndex, fetchTrigger]);
 
   // Listen for document mutation events and invalidate the cache for this doc.
   useEffect(() => {
@@ -78,9 +80,9 @@ export function useTextLayer(docId: number | null, pageIndex: number) {
     const unlisten = listen<number>("document-mutated", (event) => {
       if (event.payload === docId) {
         invalidateTextLayerCache(docId);
-        // Re-trigger fetch by clearing local state.
-        setResult({ words: [], scanned: false });
-        setLoading(true);
+        // Bump the trigger to re-run the fetch effect (deps [docId, pageIndex]
+        // haven't changed, so this is the only way to force a re-fetch).
+        setFetchTrigger((n) => n + 1);
       }
     });
     return () => {

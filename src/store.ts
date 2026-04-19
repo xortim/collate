@@ -14,7 +14,6 @@ export interface DocViewState {
   selectedPages: ReadonlySet<number>;
   isDirty: boolean;
   selectionAnchor: number | null;
-  activePageScanned: boolean;
 }
 
 export const DEFAULT_DOC_VIEW_STATE: DocViewState = {
@@ -24,7 +23,6 @@ export const DEFAULT_DOC_VIEW_STATE: DocViewState = {
   selectedPages: new Set(),
   isDirty: false,
   selectionAnchor: null,
-  activePageScanned: false,
 };
 
 export interface TabEntry {
@@ -94,7 +92,6 @@ function captureViewState(s: AppStore): DocViewState {
     selectedPages: s.selectedPages,
     isDirty: s.isDirty,
     selectionAnchor: s.selectionAnchor,
-    activePageScanned: s.activePageScanned,
   };
 }
 

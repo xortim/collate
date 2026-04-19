@@ -1,3 +1,4 @@
+import { AlertTriangle } from "lucide-react";
 import { useAppStore } from "@/store";
 import {
   Tooltip,
@@ -37,7 +38,7 @@ export function StatusBar({ pageCount }: StatusBarProps) {
                 style={{ visibility: activePageScanned ? "visible" : "hidden" }}
                 aria-label="Scanned page"
               >
-                ⚠
+                <AlertTriangle className="h-3 w-3" />
               </span>
             </TooltipTrigger>
             <TooltipContent side="top">

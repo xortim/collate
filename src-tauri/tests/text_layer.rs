@@ -32,6 +32,68 @@ fn init_pdfium() {
 // ---------------------------------------------------------------------------
 
 /// Build a minimal one-page PDF whose content stream places `text` on the page
+/// using the given Type1 BaseFont at 12pt.  Pdfium handles standard font names
+/// (Helvetica, Helvetica-Bold, etc.) using built-in AFM metrics.
+fn make_text_pdf_with_font(text: &str, base_font: &str) -> Vec<u8> {
+    let mut doc = Document::with_version("1.4");
+
+    let mut font_dict = Dictionary::new();
+    font_dict.set("Type", Object::Name(b"Font".to_vec()));
+    font_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
+    font_dict.set("BaseFont", Object::Name(base_font.as_bytes().to_vec()));
+    font_dict.set("Encoding", Object::Name(b"WinAnsiEncoding".to_vec()));
+    let font_id = doc.add_object(Object::Dictionary(font_dict));
+
+    let stream_bytes = format!("BT /F1 12 Tf 72 720 Td ({text}) Tj ET").into_bytes();
+    let mut stream_dict = Dictionary::new();
+    stream_dict.set("Length", Object::Integer(stream_bytes.len() as i64));
+    let content_id = doc.add_object(Object::Stream(Stream::new(stream_dict, stream_bytes)));
+
+    let mut font_resources = Dictionary::new();
+    font_resources.set("F1", Object::Reference(font_id));
+    let mut resources_dict = Dictionary::new();
+    resources_dict.set("Font", Object::Dictionary(font_resources));
+
+    let media_box = Object::Array(vec![
+        Object::Integer(0),
+        Object::Integer(0),
+        Object::Integer(612),
+        Object::Integer(792),
+    ]);
+
+    let pages_id = doc.new_object_id();
+
+    let mut page_dict = Dictionary::new();
+    page_dict.set("Type", Object::Name(b"Page".to_vec()));
+    page_dict.set("Parent", Object::Reference(pages_id));
+    page_dict.set("MediaBox", media_box);
+    page_dict.set("Contents", Object::Reference(content_id));
+    page_dict.set("Resources", Object::Dictionary(resources_dict));
+    let page_id = doc.add_object(Object::Dictionary(page_dict));
+
+    let mut pages_dict = Dictionary::new();
+    pages_dict.set("Type", Object::Name(b"Pages".to_vec()));
+    pages_dict.set("Kids", Object::Array(vec![Object::Reference(page_id)]));
+    pages_dict.set("Count", Object::Integer(1));
+    doc.objects.insert(pages_id, Object::Dictionary(pages_dict));
+
+    let mut catalog_dict = Dictionary::new();
+    catalog_dict.set("Type", Object::Name(b"Catalog".to_vec()));
+    catalog_dict.set("Pages", Object::Reference(pages_id));
+    let catalog_id = doc.add_object(Object::Dictionary(catalog_dict));
+    doc.trailer.set("Root", Object::Reference(catalog_id));
+
+    let tmp = std::env::temp_dir().join(format!(
+        "collate_test_font_{:?}.pdf",
+        std::thread::current().id()
+    ));
+    doc.save(tmp.to_str().unwrap()).expect("lopdf save failed");
+    let bytes = std::fs::read(&tmp).expect("read temp pdf");
+    let _ = std::fs::remove_file(&tmp);
+    bytes
+}
+
+/// Build a minimal one-page PDF whose content stream places `text` on the page
 /// using Helvetica 12pt at position (72, 720) PDF points.
 ///
 /// Pdfium can extract text from standard Type1 fonts (Helvetica) using its
@@ -332,5 +394,61 @@ fn search_skips_scanned_pages() {
             matches.is_empty(),
             "scanned page should produce no search results"
         );
+    });
+}
+
+/// Helvetica-Bold / WinAnsiEncoding with an unembedded font may cause
+/// tight_bounds to fail for every glyph.  The search must still find the text
+/// and return a page match even when no word highlight boxes can be built.
+#[test]
+fn search_finds_match_in_helvetica_bold() {
+    init_pdfium();
+    let bytes = make_text_pdf_with_font("FOX SMITH", "Helvetica-Bold");
+    with_doc(bytes, |doc| {
+        let matches =
+            search_document_impl(doc, 1, "FOX").expect("search_document_impl failed");
+        assert_eq!(
+            matches.len(),
+            1,
+            "expected 1 page match for 'FOX' in Helvetica-Bold text"
+        );
+        assert_eq!(matches[0].page_index, 0);
+    });
+}
+
+/// Case-insensitive search must also work for Helvetica-Bold text.
+#[test]
+fn search_finds_lowercase_query_in_helvetica_bold() {
+    init_pdfium();
+    let bytes = make_text_pdf_with_font("FOX SMITH", "Helvetica-Bold");
+    with_doc(bytes, |doc| {
+        let matches =
+            search_document_impl(doc, 1, "fox").expect("search_document_impl failed");
+        assert_eq!(
+            matches.len(),
+            1,
+            "case-insensitive search must find 'fox' in 'FOX SMITH'"
+        );
+    });
+}
+
+/// A page must appear in results even when the matched text has no word boxes
+/// (e.g. all tight_bounds calls failed for a font).  word_indices will be
+/// empty but the page index must be present so the find bar can scroll to it.
+#[test]
+fn search_reports_page_when_word_boxes_missing() {
+    init_pdfium();
+    // We test search_document_impl with a real PDF so the path through
+    // extract_page_words is exercised.  The word_indices may be empty when
+    // tight_bounds is unavailable, but the page must still appear.
+    let bytes = make_text_pdf_with_font("FOX SMITH", "Helvetica-Bold");
+    with_doc(bytes, |doc| {
+        let matches =
+            search_document_impl(doc, 1, "FOX").expect("search_document_impl failed");
+        assert!(
+            !matches.is_empty(),
+            "page must be in results even if word_indices is empty"
+        );
+        assert_eq!(matches[0].page_index, 0, "match must be on page 0");
     });
 }

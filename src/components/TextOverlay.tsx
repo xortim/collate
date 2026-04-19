@@ -36,7 +36,6 @@ export function TextOverlay({ words, highlights }: Props) {
       style={{
         position: "absolute",
         inset: 0,
-        pointerEvents: "none",
         userSelect: "text",
         overflow: "hidden",
       }}

@@ -4,6 +4,10 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import { PageViewer, PageViewerHandle } from "./PageViewer";
 import { useAppStore } from "@/store";
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(vi.fn()),
+}));
+
 // Avoid virtualizer complexity in unit tests — we only care about the scroll
 // detection logic, not layout.
 vi.mock("@tanstack/react-virtual", () => ({

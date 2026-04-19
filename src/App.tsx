@@ -295,11 +295,14 @@ function App() {
     const unlistenSave    = listen<void>("menu-save",    () => handleSave());
     const unlistenSaveAs  = listen<void>("menu-save-as", () => handleSaveAs());
     const unlistenUndo = listen<void>("menu-undo", () => {
-      if (isInputFocused(document.activeElement)) { document.execCommand("undo"); return; }
+      // When a text input is focused, let WKWebView's native Cmd+Z handle undo.
+      // document.execCommand("undo") is deprecated and not implemented in WKWebView.
+      if (isInputFocused(document.activeElement)) return;
       void handleUndo();
     });
     const unlistenRedo = listen<void>("menu-redo", () => {
-      if (isInputFocused(document.activeElement)) { document.execCommand("redo"); return; }
+      // Same as above — native undo/redo in inputs works without interception.
+      if (isInputFocused(document.activeElement)) return;
       void handleRedo();
     });
     const unlistenSelectAll = listen<void>("menu-select-all", () => {
