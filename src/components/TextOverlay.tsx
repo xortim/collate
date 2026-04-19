@@ -67,7 +67,7 @@ export function TextOverlay({ words, highlights }: Props) {
               height: `${word.height * 100}%`,
               color: "transparent",
               cursor: isUrl ? "pointer" : "text",
-              pointerEvents: isUrl || isHighlighted ? "auto" : "none",
+              pointerEvents: "auto",
               // Semi-transparent yellow for find matches.
               backgroundColor: isHighlighted ? "rgba(250, 204, 21, 0.4)" : undefined,
               // Prevent layout-affecting whitespace.
