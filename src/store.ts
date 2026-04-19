@@ -14,6 +14,7 @@ export interface DocViewState {
   selectedPages: ReadonlySet<number>;
   isDirty: boolean;
   selectionAnchor: number | null;
+  activePageScanned: boolean;
 }
 
 export const DEFAULT_DOC_VIEW_STATE: DocViewState = {
@@ -23,6 +24,7 @@ export const DEFAULT_DOC_VIEW_STATE: DocViewState = {
   selectedPages: new Set(),
   isDirty: false,
   selectionAnchor: null,
+  activePageScanned: false,
 };
 
 export interface TabEntry {
@@ -49,6 +51,9 @@ interface AppStore {
   // Active doc view state (top-level live copy; saved/restored on tab switch)
   activePage: number;
   setActivePage(index: number): void;
+  /** True when the currently active page has no embedded text (scanned image). */
+  activePageScanned: boolean;
+  setActivePageScanned(scanned: boolean): void;
   zoom: number;
   setZoom(zoom: number): void;
   zoomMode: ZoomMode;
@@ -89,6 +94,7 @@ function captureViewState(s: AppStore): DocViewState {
     selectedPages: s.selectedPages,
     isDirty: s.isDirty,
     selectionAnchor: s.selectionAnchor,
+    activePageScanned: s.activePageScanned,
   };
 }
 
@@ -189,7 +195,9 @@ export const useAppStore = create<AppStore>()(
 
       // Active doc view state
       activePage: 0,
-      setActivePage: (index) => set({ activePage: index }),
+      setActivePage: (index) => set({ activePage: index, activePageScanned: false }),
+      activePageScanned: false,
+      setActivePageScanned: (scanned) => set({ activePageScanned: scanned }),
       zoom: 75,
       setZoom: (zoom) => set({ zoom }),
       zoomMode: "manual",

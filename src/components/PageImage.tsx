@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useTextLayer } from "@/hooks/useTextLayer";
+import { useAppStore } from "@/store";
+import { TextOverlay } from "./TextOverlay";
 
 interface Props {
   docId: number;
@@ -10,6 +13,8 @@ interface Props {
   /** Page aspect ratio for the loading placeholder. */
   widthPts: number;
   heightPts: number;
+  /** Word indices to highlight as find-match results on this page. */
+  highlights: Set<number>;
 }
 
 /**
@@ -28,8 +33,12 @@ interface Props {
  *   zoom/resize      → old image stays visible (CSS-scaled to new size) while
  *                      the debounced re-render loads; no skeleton flash
  *   unmount          → inflight load cancelled
+ *
+ * Text layer: an invisible TextOverlay sits absolutely over the image so the
+ * browser handles selection, copy, and cursor natively. Zoom is free — the
+ * overlay uses percentage coordinates that scale with the image.
  */
-export function PageImage({ docId, pageIndex, width, widthPts, heightPts }: Props) {
+export function PageImage({ docId, pageIndex, width, widthPts, heightPts, highlights }: Props) {
   // Cap at 3x: covers Retina (2x) and high-density mobile/pro displays (3x)
   // without unbounded render costs on future hardware. Beyond 3x the visual
   // difference is imperceptible for PDF text at normal viewing distance.
@@ -61,6 +70,20 @@ export function PageImage({ docId, pageIndex, width, widthPts, heightPts }: Prop
     return () => { cancelled = true; img.src = ""; };
   }, [debouncedSrc]);
 
+  // Text layer — fetched once per page and cached. Provides words for the
+  // invisible selection overlay and signals if the page is scanned.
+  const { words, scanned } = useTextLayer(docId, pageIndex);
+
+  // Keep the store's activePageScanned flag in sync so StatusBar can show the
+  // scanned indicator without polling or prop-drilling through PageViewer.
+  const activePage = useAppStore((s) => s.activePage);
+  const setActivePageScanned = useAppStore((s) => s.setActivePageScanned);
+  useEffect(() => {
+    if (pageIndex === activePage) {
+      setActivePageScanned(scanned);
+    }
+  }, [scanned, pageIndex, activePage, setActivePageScanned]);
+
   const aspectRatio = `${widthPts} / ${heightPts}`;
 
   if (error && !displayedSrc) {
@@ -85,11 +108,16 @@ export function PageImage({ docId, pageIndex, width, widthPts, heightPts }: Prop
   }
 
   return (
-    <img
-      src={displayedSrc}
-      alt={`Page ${pageIndex + 1}`}
-      className="w-full shadow-sm block rounded-md select-none"
-      style={{ aspectRatio }}
-    />
+    <div style={{ position: "relative" }}>
+      <img
+        src={displayedSrc}
+        alt={`Page ${pageIndex + 1}`}
+        className="w-full shadow-sm block rounded-md select-none"
+        style={{ aspectRatio }}
+      />
+      {words.length > 0 && (
+        <TextOverlay words={words} highlights={highlights} />
+      )}
+    </div>
   );
 }

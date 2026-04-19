@@ -70,13 +70,14 @@ lint: ## Lint the project (Rust + TypeScript)
 .PHONY: test
 test: ## Execute tests (Rust + frontend)
 	@$(MAKE) --no-print-directory log-$@
-	@cargo test --manifest-path src-tauri/Cargo.toml
+	@DYLD_LIBRARY_PATH=$(PWD)/lib:$$DYLD_LIBRARY_PATH LD_LIBRARY_PATH=$(PWD)/lib:$$LD_LIBRARY_PATH cargo test --manifest-path src-tauri/Cargo.toml
 	@pnpm test
 
 .PHONY: test-rust
-test-rust: ## Execute Rust tests only
+test-rust: ## Execute Rust tests only (requires lib/libpdfium — run `make pdfium` first)
 	@$(MAKE) --no-print-directory log-$@
-	cargo test --manifest-path src-tauri/Cargo.toml
+	DYLD_LIBRARY_PATH=$(PWD)/lib:$$DYLD_LIBRARY_PATH LD_LIBRARY_PATH=$(PWD)/lib:$$LD_LIBRARY_PATH cargo test --manifest-path src-tauri/Cargo.toml --lib
+	DYLD_LIBRARY_PATH=$(PWD)/lib:$$DYLD_LIBRARY_PATH LD_LIBRARY_PATH=$(PWD)/lib:$$LD_LIBRARY_PATH cargo test --manifest-path src-tauri/Cargo.toml --test text_layer -- --test-threads=1
 
 .PHONY: test-frontend
 test-frontend: ## Execute frontend tests only

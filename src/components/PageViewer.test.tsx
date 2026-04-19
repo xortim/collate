@@ -120,8 +120,8 @@ describe("PageViewer — scrollToPage", () => {
     // leaving PAGE_TOP_GAP (16 px) of breathing room above page 1 — matching the gap
     // that exists above page 0 when a document first opens (scrollTop = 0).
     const ref = createRef<PageViewerHandle>();
-    const { container } = render(<PageViewer ref={ref} docId={1} pageSizes={PAGES_5} />);
-    const scrollEl = container.firstElementChild as HTMLDivElement;
+    const { getByTestId } = render(<PageViewer ref={ref} docId={1} pageSizes={PAGES_5} />);
+    const scrollEl = getByTestId("scroll-container");
 
     await act(async () => {
       ref.current?.scrollToPage(1);
@@ -136,11 +136,11 @@ describe("PageViewer — natural scroll active page detection", () => {
     // At 75% zoom, scrollTop=600 puts page 1's top (626 px) just inside the
     // 50 px grace zone → page 1 (index 1) should become active.
     const ref = createRef<PageViewerHandle>();
-    const { container } = render(
+    const { getByTestId } = render(
       <PageViewer ref={ref} docId={1} pageSizes={PAGES_5} />
     );
-    const scrollEl = container.firstElementChild as HTMLDivElement;
-    mockGeometry(scrollEl, 3066, 800, 600);
+    const scrollEl = getByTestId("scroll-container");
+    mockGeometry(scrollEl as HTMLElement, 3066, 800, 600);
 
     await act(async () => {
       scrollEl.dispatchEvent(new Event("scroll"));

@@ -2,7 +2,9 @@ import React, { useEffect, useImperativeHandle, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
 import { PageImage } from "./PageImage";
+import { FindBar } from "./FindBar";
 import { useAppStore } from "@/store";
+import { useFindBar } from "@/hooks/useFindBar";
 
 interface PageSize {
   width_pts: number;
@@ -53,6 +55,14 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
     const zoomMode = useAppStore((s) => s.zoomMode);
     const setZoom = useAppStore((s) => s.setZoom);
     const setZoomMode = useAppStore((s) => s.setZoomMode);
+
+    // scrollToPageRef holds the real scroll implementation and is updated every
+    // render so it always captures the latest pageSizes / pageWidthFor values.
+    // useFindBar receives a stable wrapper around this ref so its useCallback
+    // deps don't change on every render. useImperativeHandle delegates to it too.
+    const scrollToPageRef = useRef<(index: number) => void>(() => {});
+    const { state: findState, openFind, closeFind, setQuery, next, prev, highlightsForPage } =
+      useFindBar(docId, (idx) => scrollToPageRef.current(idx));
 
     // Refs for use inside stable closures (virtualizer, event listeners).
     const zoomRef = useRef(zoom);
@@ -180,7 +190,22 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
       return () => el.removeEventListener("wheel", onWheel);
     }, [setZoom, setZoomMode]);
 
-    // Expose scrollToPage to the parent (App) so the sidebar can drive it.
+    // Cmd/Ctrl+F: open find bar. Escape: close find bar (also handled inside FindBar).
+    useEffect(() => {
+      function onKeyDown(e: KeyboardEvent) {
+        if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+          e.preventDefault();
+          openFind();
+        }
+      }
+      document.addEventListener("keydown", onKeyDown);
+      return () => document.removeEventListener("keydown", onKeyDown);
+    }, [openFind]);
+
+    // Keep scrollToPageRef pointing at the real implementation on every render.
+    // Both the imperative handle (sidebar clicks) and useFindBar (match navigation)
+    // call this ref so they always use the latest pageSizes / pageWidthFor values.
+    //
     // We compute the offset directly rather than using virtualizer.scrollToIndex
     // because scrollToIndex triggers a reconcile loop (scheduleScrollReconcile)
     // that spins on requestAnimationFrame waiting for the scroll event to update
@@ -189,29 +214,33 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
     // stabilising — causing the 2-3 s freeze observed at 200%+ zoom.
     // Setting el.scrollTop directly bypasses the loop entirely; the virtualizer's
     // existing scroll listener picks up the change on the next frame as normal.
+    scrollToPageRef.current = (index: number) => {
+      const el = parentRef.current;
+      if (!el) return;
+      let offset = 0;
+      for (let i = 0; i < index; i++) {
+        const { width_pts, height_pts } = pageSizes[i];
+        offset += Math.round((height_pts / width_pts) * pageWidthFor(width_pts)) + PAGE_GAP;
+      }
+      // Set direction before changing scrollTop so the rangeExtractor sees
+      // the correct direction when the virtualizer re-renders on scroll.
+      scrollDirectionRef.current = offset > el.scrollTop ? "down" : "up";
+      // Tell onScroll to use this index directly rather than re-deriving the
+      // active page from the scroll position. This handles two cases:
+      //   1. scrollTop is clamped (offset > maxScrollTop) so position maths
+      //      would pick the wrong page.
+      //   2. The page is already visible and scrollTop doesn't change, so no
+      //      scroll event fires at all — the direct setActivePage below
+      //      handles highlighting immediately in that case.
+      pendingActiveRef.current = index;
+      el.scrollTop = offset;
+      // Optimistic direct set for the no-scroll-event case (page already visible).
+      useAppStore.getState().setActivePage(index);
+    };
+
     useImperativeHandle(ref, () => ({
       scrollToPage(index) {
-        const el = parentRef.current;
-        if (!el) return;
-        let offset = 0;
-        for (let i = 0; i < index; i++) {
-          const { width_pts, height_pts } = pageSizes[i];
-          offset += Math.round((height_pts / width_pts) * pageWidthFor(width_pts)) + PAGE_GAP;
-        }
-        // Set direction before changing scrollTop so the rangeExtractor sees
-        // the correct direction when the virtualizer re-renders on scroll.
-        scrollDirectionRef.current = offset > el.scrollTop ? "down" : "up";
-        // Tell onScroll to use this index directly rather than re-deriving the
-        // active page from the scroll position. This handles two cases:
-        //   1. scrollTop is clamped (offset > maxScrollTop) so position maths
-        //      would pick the wrong page.
-        //   2. The page is already visible and scrollTop doesn't change, so no
-        //      scroll event fires at all — the direct setActivePage below
-        //      handles highlighting immediately in that case.
-        pendingActiveRef.current = index;
-        el.scrollTop = offset;
-        // Optimistic direct set for the no-scroll-event case (page already visible).
-        useAppStore.getState().setActivePage(index);
+        scrollToPageRef.current(index);
       },
     }));
 
@@ -279,51 +308,65 @@ export const PageViewer = React.forwardRef<PageViewerHandle, Props>(
         : undefined;
 
     return (
-      <div
-        ref={parentRef}
-        className={cn(
-          "h-full bg-muted",
-          zoomMode === "fit-width" ? "overflow-y-auto" : "overflow-auto"
-        )}
-      >
-        {/* Spacer that gives the scrollbar the correct total height. */}
+      <div className="relative h-full">
         <div
-          className="relative w-full"
-          style={{
-            height: virtualizer.getTotalSize() + PAGE_TOP_GAP,
-            minWidth: manualContentWidth,
-          }}
+          ref={parentRef}
+          data-testid="scroll-container"
+          className={cn(
+            "h-full bg-muted",
+            zoomMode === "fit-width" ? "overflow-y-auto" : "overflow-auto"
+          )}
         >
-          {virtualizer.getVirtualItems().map((item) => {
-            const { width_pts, height_pts } = pageSizes[item.index];
-            const pageWidth =
-              zoomMode === "fit-width"
-                ? Math.max(
-                    (parentRef.current?.clientWidth ?? 800) - PAGE_PADDING_X,
-                    100
-                  )
-                : Math.round((width_pts * zoom) / 100);
+          {/* Spacer that gives the scrollbar the correct total height. */}
+          <div
+            className="relative w-full"
+            style={{
+              height: virtualizer.getTotalSize() + PAGE_TOP_GAP,
+              minWidth: manualContentWidth,
+            }}
+          >
+            {virtualizer.getVirtualItems().map((item) => {
+              const { width_pts, height_pts } = pageSizes[item.index];
+              const pageWidth =
+                zoomMode === "fit-width"
+                  ? Math.max(
+                      (parentRef.current?.clientWidth ?? 800) - PAGE_PADDING_X,
+                      100
+                    )
+                  : Math.round((width_pts * zoom) / 100);
 
-            return (
-              <div
-                key={item.key}
-                className="absolute left-0 right-0"
-                style={{ top: item.start + PAGE_TOP_GAP, paddingBottom: PAGE_GAP }}
-              >
-                {/* mx-auto centers the page when it's narrower than the viewport. */}
-                <div style={{ width: pageWidth, margin: "0 auto" }}>
-                  <PageImage
-                    docId={docId}
-                    pageIndex={item.index}
-                    width={pageWidth}
-                    widthPts={width_pts}
-                    heightPts={height_pts}
-                  />
+              return (
+                <div
+                  key={item.key}
+                  className="absolute left-0 right-0"
+                  style={{ top: item.start + PAGE_TOP_GAP, paddingBottom: PAGE_GAP }}
+                >
+                  {/* mx-auto centers the page when it's narrower than the viewport. */}
+                  <div style={{ width: pageWidth, margin: "0 auto" }}>
+                    <PageImage
+                      docId={docId}
+                      pageIndex={item.index}
+                      width={pageWidth}
+                      widthPts={width_pts}
+                      heightPts={height_pts}
+                      highlights={highlightsForPage(item.index)}
+                    />
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
+        <FindBar
+          open={findState.open}
+          query={findState.query}
+          matchCount={findState.matches.length}
+          currentMatch={findState.currentMatchIndex}
+          onQueryChange={setQuery}
+          onNext={next}
+          onPrev={prev}
+          onClose={closeFind}
+        />
       </div>
     );
   }
