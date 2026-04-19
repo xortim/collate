@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAppStore, ZOOM_STEPS, PageDisplay, TabEntry } from "@/store";
 import { useTheme } from "@/hooks/useTheme";
-import { useKeyboardNav } from "@/hooks/useKeyboardNav";
+import { useKeyboardNav, isInputFocused } from "@/hooks/useKeyboardNav";
 import { platformName } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { DocumentManifest } from "@/types";
@@ -226,7 +226,7 @@ function App() {
         e.preventDefault();
         setShowShortcuts((v) => !v);
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+      if ((e.metaKey || e.ctrlKey) && e.key === "a" && !isInputFocused(e.target)) {
         const m = activeTabRef.current;
         if (m) {
           e.preventDefault();

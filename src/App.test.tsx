@@ -134,6 +134,27 @@ describe("App", () => {
 
     expect(useAppStore.getState().zoom).toBe(100);
   });
+
+  it("Cmd+A does not select all pages when an input is focused", () => {
+    useAppStore.setState({
+      tabs: [{ docId: 1, filename: "a.pdf", path: "/a.pdf",
+                pageCount: 3, pageSizes: [], canUndo: false, canRedo: false, isDirty: false }],
+      activeDocId: 1,
+      docViewStates: new Map(),
+    });
+    render(<App />);
+
+    // Simulate an input being the event target
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+
+    fireEvent.keyDown(input, { key: "a", metaKey: true, bubbles: true });
+
+    expect(useAppStore.getState().selectedPages.size).toBe(0);
+
+    document.body.removeChild(input);
+  });
 });
 
 describe("Edit > Select All menu event", () => {

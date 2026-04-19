@@ -13,7 +13,7 @@ function isSidebarVisible(el: HTMLElement): boolean {
   return el.closest('[data-state="collapsed"]') === null;
 }
 
-function isInputFocused(target: EventTarget | null): boolean {
+export function isInputFocused(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
   return (
