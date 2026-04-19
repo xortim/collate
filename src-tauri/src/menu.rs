@@ -66,12 +66,18 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let undo       = MenuItem::with_id(app, "undo",       "Undo",       false, Some("CmdOrCtrl+Z"))?;
     let redo       = MenuItem::with_id(app, "redo",       "Redo",       false, Some("Shift+CmdOrCtrl+Z"))?;
     let sep_edit1  = PredefinedMenuItem::separator(app)?;
-    let select_all = MenuItem::with_id(app, "select-all", "Select All", false, Some("CmdOrCtrl+A"))?;
+    // PredefinedMenuItem for cut/copy/paste: these create native AppKit items that
+    // target nil (first responder), so WKWebView text inputs receive them correctly.
+    let cut        = PredefinedMenuItem::cut(app, Some("Cut"))?;
+    let copy       = PredefinedMenuItem::copy(app, Some("Copy"))?;
+    let paste      = PredefinedMenuItem::paste(app, Some("Paste"))?;
     let sep_edit2  = PredefinedMenuItem::separator(app)?;
+    let select_all = MenuItem::with_id(app, "select-all", "Select All", false, Some("CmdOrCtrl+A"))?;
+    let sep_edit3  = PredefinedMenuItem::separator(app)?;
     let find       = MenuItem::with_id(app, "find",       "Find…",      false, Some("CmdOrCtrl+F"))?;
     let edit_menu  = Submenu::with_items(
         app, "Edit", true,
-        &[&undo, &redo, &sep_edit1, &select_all, &sep_edit2, &find],
+        &[&undo, &redo, &sep_edit1, &cut, &copy, &paste, &sep_edit2, &select_all, &sep_edit3, &find],
     )?;
 
     // ── Document → Rotation ────────────────────────────────────────────────

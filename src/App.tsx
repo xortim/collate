@@ -294,10 +294,21 @@ function App() {
     });
     const unlistenSave    = listen<void>("menu-save",    () => handleSave());
     const unlistenSaveAs  = listen<void>("menu-save-as", () => handleSaveAs());
-    const unlistenUndo      = listen<void>("menu-undo",       () => handleUndo());
-    const unlistenRedo      = listen<void>("menu-redo",       () => handleRedo());
+    const unlistenUndo = listen<void>("menu-undo", () => {
+      if (isInputFocused(document.activeElement)) { document.execCommand("undo"); return; }
+      void handleUndo();
+    });
+    const unlistenRedo = listen<void>("menu-redo", () => {
+      if (isInputFocused(document.activeElement)) { document.execCommand("redo"); return; }
+      void handleRedo();
+    });
     const unlistenSelectAll = listen<void>("menu-select-all", () => {
-      if (isInputFocused(document.activeElement)) return;
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+        active.select();
+        return;
+      }
+      if (isInputFocused(active)) return;
       const m = activeTabRef.current;
       if (m) useAppStore.getState().selectAll(m.pageCount);
     });
