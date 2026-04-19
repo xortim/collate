@@ -297,6 +297,7 @@ function App() {
     const unlistenUndo      = listen<void>("menu-undo",       () => handleUndo());
     const unlistenRedo      = listen<void>("menu-redo",       () => handleRedo());
     const unlistenSelectAll = listen<void>("menu-select-all", () => {
+      if (isInputFocused(document.activeElement)) return;
       const m = activeTabRef.current;
       if (m) useAppStore.getState().selectAll(m.pageCount);
     });

@@ -200,6 +200,28 @@ describe("Edit > Select All menu event", () => {
 
     expect(useAppStore.getState().selectedPages.size).toBe(0);
   });
+
+  it("does not select pages when menu-select-all fires while an input is focused", async () => {
+    useAppStore.setState({
+      tabs: [{ docId: 1, filename: "a.pdf", path: "/a.pdf",
+                pageCount: 3, pageSizes: [], canUndo: false, canRedo: false, isDirty: false }],
+      activeDocId: 1,
+      docViewStates: new Map(),
+    });
+    render(<App />);
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+
+    await act(async () => {
+      menuHandlers["menu-select-all"]?.();
+    });
+
+    expect(useAppStore.getState().selectedPages.size).toBe(0);
+
+    document.body.removeChild(input);
+  });
 });
 
 // ---------------------------------------------------------------------------
