@@ -49,6 +49,9 @@ interface AppStore {
   // Active doc view state (top-level live copy; saved/restored on tab switch)
   activePage: number;
   setActivePage(index: number): void;
+  /** True when the currently active page has no embedded text (scanned image). */
+  activePageScanned: boolean;
+  setActivePageScanned(scanned: boolean): void;
   zoom: number;
   setZoom(zoom: number): void;
   zoomMode: ZoomMode;
@@ -189,7 +192,9 @@ export const useAppStore = create<AppStore>()(
 
       // Active doc view state
       activePage: 0,
-      setActivePage: (index) => set({ activePage: index }),
+      setActivePage: (index) => set({ activePage: index, activePageScanned: false }),
+      activePageScanned: false,
+      setActivePageScanned: (scanned) => set({ activePageScanned: scanned }),
       zoom: 75,
       setZoom: (zoom) => set({ zoom }),
       zoomMode: "manual",

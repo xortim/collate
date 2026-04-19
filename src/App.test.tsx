@@ -134,6 +134,27 @@ describe("App", () => {
 
     expect(useAppStore.getState().zoom).toBe(100);
   });
+
+  it("Cmd+A does not select all pages when an input is focused", () => {
+    useAppStore.setState({
+      tabs: [{ docId: 1, filename: "a.pdf", path: "/a.pdf",
+                pageCount: 3, pageSizes: [], canUndo: false, canRedo: false, isDirty: false }],
+      activeDocId: 1,
+      docViewStates: new Map(),
+    });
+    render(<App />);
+
+    // Simulate an input being the event target
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+
+    fireEvent.keyDown(input, { key: "a", metaKey: true, bubbles: true });
+
+    expect(useAppStore.getState().selectedPages.size).toBe(0);
+
+    document.body.removeChild(input);
+  });
 });
 
 describe("Edit > Select All menu event", () => {
@@ -178,6 +199,28 @@ describe("Edit > Select All menu event", () => {
     });
 
     expect(useAppStore.getState().selectedPages.size).toBe(0);
+  });
+
+  it("does not select pages when menu-select-all fires while an input is focused", async () => {
+    useAppStore.setState({
+      tabs: [{ docId: 1, filename: "a.pdf", path: "/a.pdf",
+                pageCount: 3, pageSizes: [], canUndo: false, canRedo: false, isDirty: false }],
+      activeDocId: 1,
+      docViewStates: new Map(),
+    });
+    render(<App />);
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+
+    await act(async () => {
+      menuHandlers["menu-select-all"]?.();
+    });
+
+    expect(useAppStore.getState().selectedPages.size).toBe(0);
+
+    document.body.removeChild(input);
   });
 });
 
@@ -307,5 +350,61 @@ describe("Tab navigation menu events", () => {
     render(<App />);
     await act(async () => { menuHandlers["menu-prev-tab"]?.(); });
     expect(useAppStore.getState().activeDocId).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Undo / Redo menu events — input-focus guard
+// ---------------------------------------------------------------------------
+
+describe("Undo/Redo menu events", () => {
+  let menuHandlers: Record<string, () => void>;
+
+  beforeEach(() => {
+    // JSDOM doesn't implement execCommand; stub it so the guard path doesn't throw.
+    document.execCommand = vi.fn().mockReturnValue(true);
+    menuHandlers = {};
+    useAppStore.setState({
+      tabs: [{ docId: 1, filename: "a.pdf", path: "/a.pdf",
+                pageCount: 3, pageSizes: [], canUndo: true, canRedo: true, isDirty: false }],
+      activeDocId: 1,
+      docViewStates: new Map(),
+    });
+    (listen as Mock).mockImplementation((event: string, cb: () => void) => {
+      menuHandlers[event] = cb;
+      return Promise.resolve(vi.fn());
+    });
+    (invoke as Mock).mockResolvedValue({
+      doc_id: 1, page_count: 3, filename: "a.pdf", path: "/a.pdf",
+      can_undo: false, can_redo: true, page_sizes: [],
+    });
+  });
+
+  it("does not call document undo when an input is focused", async () => {
+    render(<App />);
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+
+    await act(async () => { menuHandlers["menu-undo"]?.(); });
+
+    expect(invoke).not.toHaveBeenCalledWith("undo_document", expect.anything());
+
+    document.body.removeChild(input);
+  });
+
+  it("does not call document redo when an input is focused", async () => {
+    render(<App />);
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+
+    await act(async () => { menuHandlers["menu-redo"]?.(); });
+
+    expect(invoke).not.toHaveBeenCalledWith("redo_document", expect.anything());
+
+    document.body.removeChild(input);
   });
 });

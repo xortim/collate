@@ -9,6 +9,7 @@ use tauri::{http, menu::{MenuItem, MenuItemKind, PredefinedMenuItem, Submenu}, E
 
 mod menu;
 mod render;
+pub mod text;
 pub use render::{encode_bmp, encode_jpeg, rasterise_page, rgba_to_rgb};
 
 // ---------------------------------------------------------------------------
@@ -374,6 +375,54 @@ fn delete_pages(
     Err("delete_pages: not yet implemented".to_string()) // TODO(mutations)
 }
 
+// ---------------------------------------------------------------------------
+// Text layer commands
+// ---------------------------------------------------------------------------
+
+/// Extract word-level text overlay data for a single page.
+///
+/// Returns normalized bounding boxes (0.0–1.0, top-left origin) for each
+/// word on the page, plus a `scanned` flag when the page has no embedded text.
+#[tauri::command]
+fn get_text_layer(
+    doc_id: u32,
+    page_index: u32,
+    state: State<AppState>,
+) -> Result<text::TextLayerResponse, String> {
+    let entry = require_doc(doc_id, &state)?;
+    let doc = entry.doc.lock().unwrap();
+    text::get_text_layer_impl(&doc, page_index as usize)
+}
+
+/// Search for `query` across all pages of a document.
+///
+/// Returns one entry per page with at least one match, carrying the indices
+/// of words (from `get_text_layer`) whose character ranges overlap each match.
+#[tauri::command]
+fn search_document(
+    doc_id: u32,
+    query: String,
+    state: State<AppState>,
+) -> Result<Vec<text::SearchMatch>, String> {
+    let entry = require_doc(doc_id, &state)?;
+    let doc = entry.doc.lock().unwrap();
+    text::search_document_impl(&doc, entry.page_count, &query)
+}
+
+/// Debug: exposes the raw pdfium character sequence for a page.
+/// Only available in debug builds — stripped from release binaries.
+#[cfg(debug_assertions)]
+#[tauri::command]
+fn debug_text_chars(
+    doc_id: u32,
+    page_index: u32,
+    state: State<AppState>,
+) -> Result<text::TextDebugInfo, String> {
+    let entry = require_doc(doc_id, &state)?;
+    let doc = entry.doc.lock().unwrap();
+    Ok(text::debug_text_chars_impl(&doc, page_index as usize))
+}
+
 /// Called by the frontend to keep the native menu checkmarks in sync with the
 /// Zustand theme state (on startup with the persisted value, and after toolbar
 /// theme changes that bypass the menu).
@@ -646,6 +695,11 @@ pub fn run() {
                 "theme-light"  => { set_theme_checks(app, "light");  let _ = app.emit("menu-theme", "light"); }
                 "theme-dark"   => { set_theme_checks(app, "dark");   let _ = app.emit("menu-theme", "dark"); }
                 "report-bug"   => { let _ = app.emit("menu-report-bug", ()); }
+                "developer-tools" => {
+                    if let Some(win) = app.get_webview_window("main") {
+                        win.open_devtools();
+                    }
+                }
                 "clear-recent" => { let _ = app.emit("menu-clear-recent", ()); }
                 id if id.starts_with("recent-") => {
                     if let Some(idx) = parse_recent_id(id) {
@@ -740,6 +794,10 @@ pub fn run() {
             open_document,
             close_document,
             get_document_info,
+            get_text_layer,
+            search_document,
+            #[cfg(debug_assertions)]
+            debug_text_chars,
             set_menu_theme,
             set_pdf_menus_enabled,
             update_recent_menu,

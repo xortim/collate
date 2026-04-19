@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAppStore, ZOOM_STEPS, PageDisplay, TabEntry } from "@/store";
 import { useTheme } from "@/hooks/useTheme";
-import { useKeyboardNav } from "@/hooks/useKeyboardNav";
+import { useKeyboardNav, isInputFocused } from "@/hooks/useKeyboardNav";
 import { platformName } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { DocumentManifest } from "@/types";
@@ -226,7 +226,7 @@ function App() {
         e.preventDefault();
         setShowShortcuts((v) => !v);
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+      if ((e.metaKey || e.ctrlKey) && e.key === "a" && !isInputFocused(e.target)) {
         const m = activeTabRef.current;
         if (m) {
           e.preventDefault();
@@ -294,9 +294,24 @@ function App() {
     });
     const unlistenSave    = listen<void>("menu-save",    () => handleSave());
     const unlistenSaveAs  = listen<void>("menu-save-as", () => handleSaveAs());
-    const unlistenUndo      = listen<void>("menu-undo",       () => handleUndo());
-    const unlistenRedo      = listen<void>("menu-redo",       () => handleRedo());
+    const unlistenUndo = listen<void>("menu-undo", () => {
+      // When a text input is focused, let WKWebView's native Cmd+Z handle undo.
+      // document.execCommand("undo") is deprecated and not implemented in WKWebView.
+      if (isInputFocused(document.activeElement)) return;
+      void handleUndo();
+    });
+    const unlistenRedo = listen<void>("menu-redo", () => {
+      // Same as above — native undo/redo in inputs works without interception.
+      if (isInputFocused(document.activeElement)) return;
+      void handleRedo();
+    });
     const unlistenSelectAll = listen<void>("menu-select-all", () => {
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+        active.select();
+        return;
+      }
+      if (isInputFocused(active)) return;
       const m = activeTabRef.current;
       if (m) useAppStore.getState().selectAll(m.pageCount);
     });

@@ -38,6 +38,7 @@ use tauri::{
 ///   "theme-system"       — View → Appearance → System
 ///   "theme-light"        — View → Appearance → Light
 ///   "theme-dark"         — View → Appearance → Dark
+///   "developer-tools"    — View → Developer Tools
 pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     // ── App menu (macOS: first submenu becomes the app-name menu) ──────────
     let about = PredefinedMenuItem::about(app, Some("About Collate"), None)?;
@@ -66,12 +67,18 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let undo       = MenuItem::with_id(app, "undo",       "Undo",       false, Some("CmdOrCtrl+Z"))?;
     let redo       = MenuItem::with_id(app, "redo",       "Redo",       false, Some("Shift+CmdOrCtrl+Z"))?;
     let sep_edit1  = PredefinedMenuItem::separator(app)?;
-    let select_all = MenuItem::with_id(app, "select-all", "Select All", false, Some("CmdOrCtrl+A"))?;
+    // PredefinedMenuItem for cut/copy/paste: these create native AppKit items that
+    // target nil (first responder), so WKWebView text inputs receive them correctly.
+    let cut        = PredefinedMenuItem::cut(app, Some("Cut"))?;
+    let copy       = PredefinedMenuItem::copy(app, Some("Copy"))?;
+    let paste      = PredefinedMenuItem::paste(app, Some("Paste"))?;
     let sep_edit2  = PredefinedMenuItem::separator(app)?;
+    let select_all = MenuItem::with_id(app, "select-all", "Select All", false, Some("CmdOrCtrl+A"))?;
+    let sep_edit3  = PredefinedMenuItem::separator(app)?;
     let find       = MenuItem::with_id(app, "find",       "Find…",      false, Some("CmdOrCtrl+F"))?;
     let edit_menu  = Submenu::with_items(
         app, "Edit", true,
-        &[&undo, &redo, &sep_edit1, &select_all, &sep_edit2, &find],
+        &[&undo, &redo, &sep_edit1, &cut, &copy, &paste, &sep_edit2, &select_all, &sep_edit3, &find],
     )?;
 
     // ── Document → Rotation ────────────────────────────────────────────────
@@ -144,11 +151,16 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let theme_light  = CheckMenuItem::with_id(app, "theme-light",  "Light",  true, false, None::<&str>)?;
     let theme_dark   = CheckMenuItem::with_id(app, "theme-dark",   "Dark",   true, false, None::<&str>)?;
     let appearance   = Submenu::with_items(app, "Appearance", true, &[&theme_system, &theme_light, &theme_dark])?;
+
+    // ── View → Developer Tools ─────────────────────────────────────────────
+    let sep_devtools   = PredefinedMenuItem::separator(app)?;
+    let developer_tools = MenuItem::with_id(app, "developer-tools", "Developer Tools", true, Some("Alt+CmdOrCtrl+I"))?;
+
     let view_menu    = Submenu::with_items(
         app,
         "View",
         true,
-        &[&next_tab, &prev_tab, &sep_tabs, &display_menu, &sep_display, &doc_info, &sep_info, &zoom_menu, &sep_zoom, &appearance],
+        &[&next_tab, &prev_tab, &sep_tabs, &display_menu, &sep_display, &doc_info, &sep_info, &zoom_menu, &sep_zoom, &appearance, &sep_devtools, &developer_tools],
     )?;
 
     // ── Help (required by macOS HIG) ───────────────────────────────────────
